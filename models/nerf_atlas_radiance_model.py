@@ -23,7 +23,7 @@ class NerfAtlasNetwork(nn.Module):
         self.opt = opt
 
         self.net_geometry_embedding = LpEmbedding(1, self.opt.geometry_embedding_dim)
-        self.use_ngp = not self.opt.use_ngp
+        self.use_ngp = bool(self.opt.use_ngp)
 
         if 'geo' not in self.opt.use_ngp:
             self.net_geometry_decoder = GeometryMlpDecoder(
