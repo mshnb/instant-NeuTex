@@ -24,18 +24,33 @@ class NerfAtlasNetwork(nn.Module):
 
         self.net_geometry_embedding = LpEmbedding(1, self.opt.geometry_embedding_dim)
 
+        # self.net_geometry_decoder = GeometryMlpDecoder(
+        #     code_dim=0,
+        #     pos_freqs=10,
+        #     uv_dim=0,
+        #     uv_count=0,
+        #     brdf_dim=3,
+        #     hidden_size=256,
+        #     num_layers=10,
+        #     requested_features={
+        #         "density",
+        #         # , "brdf"
+        #     },
+        # )
+
         self.net_geometry_decoder = GeometryMlpDecoder(
             code_dim=0,
-            pos_freqs=10,
+            pos_freqs=0,
             uv_dim=0,
             uv_count=0,
             brdf_dim=3,
-            hidden_size=256,
-            num_layers=10,
+            hidden_size=64,
+            num_layers=1,
             requested_features={
                 "density",
                 # , "brdf"
             },
+            use_ngp=True
         )
 
         self.net_atlasnet = Atlasnet(

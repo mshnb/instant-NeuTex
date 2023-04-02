@@ -4,6 +4,8 @@ import numpy as np
 import torch.nn.functional as F
 from ..networks import init_seq, positional_encoding
 
+from gridencoder import GridEncoder
+
 
 class GeometryMlpDecoder(nn.Module):
     VALID_FEATURES = {"density", "normal", "frame", "uv", "uv_weights", "brdf"}
@@ -18,6 +20,7 @@ class GeometryMlpDecoder(nn.Module):
         hidden_size,
         num_layers,
         requested_features={"density", "normal"},  # density, normal/frame, uv, brdf
+        use_ngp=False
     ):
         super().__init__()
 
@@ -44,7 +47,11 @@ class GeometryMlpDecoder(nn.Module):
         self.uv_dim = uv_dim
         self.uv_count = uv_count
         self.requested_features = requested_features
-        self.input_channels = code_dim + 3 + 6 * pos_freqs
+        self.use_ngp = use_ngp
+        if not self.use_ngp:
+            self.input_channels = code_dim + 3 + 6 * pos_freqs
+        else:
+            self.input_channels = code_dim + 32
         self.pos_freqs = pos_freqs
         self.brdf_dim = brdf_dim
 
@@ -61,6 +68,11 @@ class GeometryMlpDecoder(nn.Module):
             self.output_dim += self.brdf_dim
 
         block = []
+        if self.use_ngp:
+            block.append(GridEncoder(input_dim=3,
+                                     num_levels=16, level_dim=2,
+                                     log2_hashmap_size=19,
+                                     base_resolution=16, desired_resolution=2048))
         block.append(nn.Linear(self.input_channels, hidden_size))
         block.append(nn.ReLU())
         for i in range(num_layers):
