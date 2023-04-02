@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
+
+from gridencoder import GridEncoder
 from ..networks import init_seq, positional_encoding
 from utils.grid import generate_grid
 from utils.cube_map import (
@@ -129,7 +131,7 @@ class TextureMlp(nn.Module):
 
 class TextureViewMlpMix(nn.Module):
     def __init__(
-        self, count, out_channels, num_freqs, view_freqs, uv_dim, layers, width, clamp,
+            self, count, out_channels, num_freqs, view_freqs, uv_dim, layers, width, clamp, use_ngp=False
     ):
         super().__init__()
         self.textures = nn.ModuleList(
@@ -142,6 +144,7 @@ class TextureViewMlpMix(nn.Module):
                     layers=layers,
                     width=width,
                     clamp=clamp,
+                    use_ngp=use_ngp
                 )
                 for _ in range(count)
             ]
@@ -157,7 +160,7 @@ class TextureViewMlpMix(nn.Module):
 
 class TextureViewMlp(nn.Module):
     def __init__(
-        self, uv_dim, out_channels, num_freqs, view_freqs, layers, width, clamp
+            self, uv_dim, out_channels, num_freqs, view_freqs, layers, width, clamp, use_ngp
     ):
         super().__init__()
         self.uv_dim = uv_dim
@@ -165,9 +168,17 @@ class TextureViewMlp(nn.Module):
         self.view_freqs = max(view_freqs, 0)
 
         self.channels = out_channels
+        self.use_ngp = use_ngp
 
         block1 = []
-        block1.append(nn.Linear(uv_dim + 2 * uv_dim * self.num_freqs, width))
+        if self.use_ngp:
+            block1.append(GridEncoder(input_dim=3,
+                                      num_levels=16, level_dim=2,
+                                      log2_hashmap_size=19,
+                                      base_resolution=16, desired_resolution=2048))
+            block1.append(nn.Linear(32, width))
+        else:
+            block1.append(nn.Linear(uv_dim + 2 * uv_dim * self.num_freqs, width))
         block1.append(nn.LeakyReLU(0.2))
         for i in range(layers[0]):
             block1.append(nn.Linear(width, width))
@@ -199,9 +210,12 @@ class TextureViewMlp(nn.Module):
             view_dir: :math:`(N,Rays,Samples,3)`
         """
 
-        out = self.block1(
-            torch.cat([uv, positional_encoding(uv, self.num_freqs)], dim=-1)
-        )
+        if not self.use_ngp:
+            out = self.block1(
+                torch.cat([uv, positional_encoding(uv, self.num_freqs)], dim=-1)
+            )
+        else:
+            out = self.block1(uv)
         if self.clamp_texture:
             color1 = torch.sigmoid(self.color1(out))
         else:

@@ -72,17 +72,29 @@ class NerfAtlasNetwork(nn.Module):
         # other types are not part of the release
         assert opt.texture_decoder_type == "texture_view_mlp_mix"
 
-        self.net_texture = TextureViewMlpMix(
-            opt.primitive_count,
-            3,
-            10,
-            6,
-            uv_dim=2 if self.opt.primitive_type == "square" else 3,
-            layers=[int(x) for x in self.opt.texture_decoder_depth.split(",")],
-            width=self.opt.texture_decoder_width,
-            clamp=False,
-        )
-
+        if not self.use_ngp:
+            self.net_texture = TextureViewMlpMix(
+                count=opt.primitive_count,
+                out_channels=3,
+                num_freqs=10,
+                view_freqs=6,
+                uv_dim=2 if self.opt.primitive_type == "square" else 3,
+                layers=[int(x) for x in self.opt.texture_decoder_depth.split(",")],
+                width=self.opt.texture_decoder_width,
+                clamp=False,
+            )
+        else:
+            self.net_texture = TextureViewMlpMix(
+                count=opt.primitive_count,
+                out_channels=3,
+                num_freqs=0,
+                view_freqs=6,
+                uv_dim=2 if self.opt.primitive_type == "square" else 3,
+                layers=[2, 0],
+                width=64,
+                clamp=False,
+                use_ngp=True
+            )
         self.raygen = find_ray_generation_method("cube")
 
     def forward(
@@ -190,6 +202,7 @@ class NerfAtlasNetwork(nn.Module):
 
     def ngp_parameters(self):
         params = list(self.net_geometry_decoder.parameters())
+        params.extend(list(self.net_texture.parameters()))
         return params
 
     def other_parameters(self):
