@@ -199,70 +199,54 @@ class TextureViewMlp(nn.Module):
             view_dir: :math:`(N,Rays,Samples,3)`
         """
 
-        if self.cubemap_ is None:
-            out = self.block1(
-                torch.cat([uv, positional_encoding(uv, self.num_freqs)], dim=-1)
-            )
-            if self.clamp_texture:
-                color1 = torch.sigmoid(self.color1(out))
-            else:
-                color1 = F.softplus(self.color1(out))
-
-            view_dir = view_dir.expand(out.shape[:-1] + (view_dir.shape[-1],))
-            vp = positional_encoding(view_dir, self.view_freqs)
-            out = torch.cat([out, view_dir, vp], dim=-1)
-            if self.clamp_texture:
-                color2 = torch.sigmoid(self.block2(out))
-            else:
-                color2 = self.block2(out)
-
-            return (color1 + color2).clamp(min=0)
+        out = self.block1(
+            torch.cat([uv, positional_encoding(uv, self.num_freqs)], dim=-1)
+        )
+        if self.clamp_texture:
+            color1 = torch.sigmoid(self.color1(out))
         else:
-            out = self.block1(
-                torch.cat([uv, positional_encoding(uv, self.num_freqs)], dim=-1)
+            color1 = F.softplus(self.color1(out))
+
+        view_dir = view_dir.expand(out.shape[:-1] + (view_dir.shape[-1],))
+        vp = positional_encoding(view_dir, self.view_freqs)
+        out = torch.cat([out, view_dir, vp], dim=-1)
+        if self.clamp_texture:
+            color2 = torch.sigmoid(self.block2(out))
+        else:
+            color2 = self.block2(out)
+
+        if self.cubemap_ is None:
+            return (color1 + color2).clamp(min=0)
+
+        cubemap_color = sample_cubemap(self.cubemap_, uv)
+        original_color = color1 + color2
+        if self.cubemap_mode_ == 0:
+            original_color = (original_color * 3).clamp(min=0, max=1)  # * 0.4 + 0.3
+            return cubemap_color * original_color.mean(dim=-1, keepdim=True)
+        elif self.cubemap_mode_ == 1:
+            original_color = (original_color).clamp(min=0, max=1)  # * 0.4 + 0.3
+            original_color[cubemap_color[..., 0] < 0.99] *= cubemap_color[
+                cubemap_color[..., 0] < 0.99
+            ][..., :3]
+            return original_color
+        elif self.cubemap_mode_ == 2:
+            original_color = (original_color).clamp(min=0, max=1)
+            original_color[cubemap_color[..., 0] < 0.99] *= (
+                1 / cubemap_color[cubemap_color[..., 0] < 0.99][..., :3]
             )
-            if self.clamp_texture:
-                color1 = torch.sigmoid(self.color1(out))
-            else:
-                color1 = F.softplus(self.color1(out))
+            return original_color
+        elif self.cubemap_mode_ == 3:
+            original_color = (original_color).clamp(min=0, max=1)
 
-            view_dir = view_dir.expand(out.shape[:-1] + (view_dir.shape[-1],))
-            vp = positional_encoding(view_dir, self.view_freqs)
-            out = torch.cat([out, view_dir, vp], dim=-1)
-            if self.clamp_texture:
-                color2 = torch.sigmoid(self.block2(out))
-            else:
-                color2 = self.block2(out)
+            mask = cubemap_color[..., :3].sum(-1) > 0.01
+            original_color[mask] = (
+                2
+                * original_color[mask].mean(-1)[..., None]
+                * cubemap_color[..., :3][mask]
+            )
 
-            cubemap_color = sample_cubemap(self.cubemap_, uv)
-            original_color = color1 + color2
-            if self.cubemap_mode_ == 0:
-                original_color = (original_color * 3).clamp(min=0, max=1)  # * 0.4 + 0.3
-                return cubemap_color * original_color.mean(dim=-1, keepdim=True)
-            elif self.cubemap_mode_ == 1:
-                original_color = (original_color).clamp(min=0, max=1)  # * 0.4 + 0.3
-                original_color[cubemap_color[..., 0] < 0.99] *= cubemap_color[
-                    cubemap_color[..., 0] < 0.99
-                ][..., :3]
-                return original_color
-            elif self.cubemap_mode_ == 2:
-                original_color = (original_color).clamp(min=0, max=1)
-                original_color[cubemap_color[..., 0] < 0.99] *= (
-                    1 / cubemap_color[cubemap_color[..., 0] < 0.99][..., :3]
-                )
-                return original_color
-            elif self.cubemap_mode_ == 3:
-                original_color = (original_color).clamp(min=0, max=1)
-
-                mask = cubemap_color[..., :3].sum(-1) > 0.01
-                original_color[mask] = (
-                    2
-                    * original_color[mask].mean(-1)[..., None]
-                    * cubemap_color[..., :3][mask]
-                )
-
-                original_color += cubemap_color[..., :3]
-                return original_color
+            original_color += cubemap_color[..., :3]
+            return original_color
 
     def _export_cube(self, resolution, viewdir):
         device = next(self.block1.parameters()).device
