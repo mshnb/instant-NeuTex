@@ -23,35 +23,37 @@ class NerfAtlasNetwork(nn.Module):
         self.opt = opt
 
         self.net_geometry_embedding = LpEmbedding(1, self.opt.geometry_embedding_dim)
+        self.use_ngp = True
 
-        # self.net_geometry_decoder = GeometryMlpDecoder(
-        #     code_dim=0,
-        #     pos_freqs=10,
-        #     uv_dim=0,
-        #     uv_count=0,
-        #     brdf_dim=3,
-        #     hidden_size=256,
-        #     num_layers=10,
-        #     requested_features={
-        #         "density",
-        #         # , "brdf"
-        #     },
-        # )
-
-        self.net_geometry_decoder = GeometryMlpDecoder(
-            code_dim=0,
-            pos_freqs=0,
-            uv_dim=0,
-            uv_count=0,
-            brdf_dim=3,
-            hidden_size=64,
-            num_layers=1,
-            requested_features={
-                "density",
-                # , "brdf"
-            },
-            use_ngp=True
-        )
+        if not self.use_ngp:
+            self.net_geometry_decoder = GeometryMlpDecoder(
+                code_dim=0,
+                pos_freqs=10,
+                uv_dim=0,
+                uv_count=0,
+                brdf_dim=3,
+                hidden_size=256,
+                num_layers=10,
+                requested_features={
+                    "density",
+                    # , "brdf"
+                },
+            )
+        else:
+            self.net_geometry_decoder = GeometryMlpDecoder(
+                code_dim=0,
+                pos_freqs=0,
+                uv_dim=0,
+                uv_count=0,
+                brdf_dim=3,
+                hidden_size=64,
+                num_layers=1,
+                requested_features={
+                    "density",
+                    # , "brdf"
+                },
+                use_ngp=True
+            )
 
         self.net_atlasnet = Atlasnet(
             self.opt.points_per_primitive,
@@ -186,6 +188,14 @@ class NerfAtlasNetwork(nn.Module):
 
         return output
 
+    def ngp_parameters(self):
+        params = list(self.net_geometry_decoder.parameters())
+        return params
+
+    def other_parameters(self):
+        params = list(set(self.parameters()) - set(self.ngp_parameters()))
+        return params
+
 
 class NerfAtlasRadianceModel(BaseModel):
     @staticmethod
@@ -315,8 +325,16 @@ class NerfAtlasRadianceModel(BaseModel):
             self.schedulers = []
             self.optimizers = []
 
-            params = list(self.net_nerf_atlas.parameters())
-            self.optimizer = torch.optim.Adam(params, lr=opt.lr)
+            if not self.net_nerf_atlas.module.use_ngp:
+                params = list(self.net_nerf_atlas.parameters())
+                self.optimizer = torch.optim.Adam(params, lr=opt.lr)
+            else:
+                other_params = self.net_nerf_atlas.module.other_parameters()
+                ngp_params = self.net_nerf_atlas.module.ngp_parameters()
+                self.optimizer = torch.optim.Adam([
+                    {'params': other_params, 'lr': opt.lr},
+                    {'params': ngp_params, 'lr': opt.lr * 100},
+                ])
             self.optimizers.append(self.optimizer)
 
         if self.opt.sphere_init > 0:
