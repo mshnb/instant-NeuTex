@@ -23,9 +23,9 @@ class NerfAtlasNetwork(nn.Module):
         self.opt = opt
 
         self.net_geometry_embedding = LpEmbedding(1, self.opt.geometry_embedding_dim)
-        self.use_ngp = True
+        self.use_ngp = not self.opt.use_ngp
 
-        if not self.use_ngp:
+        if 'geo' not in self.opt.use_ngp:
             self.net_geometry_decoder = GeometryMlpDecoder(
                 code_dim=0,
                 pos_freqs=10,
@@ -72,7 +72,7 @@ class NerfAtlasNetwork(nn.Module):
         # other types are not part of the release
         assert opt.texture_decoder_type == "texture_view_mlp_mix"
 
-        if not self.use_ngp:
+        if 'color' not in self.opt.use_ngp:
             self.net_texture = TextureViewMlpMix(
                 count=opt.primitive_count,
                 out_channels=3,
@@ -201,8 +201,11 @@ class NerfAtlasNetwork(nn.Module):
         return output
 
     def ngp_parameters(self):
-        params = list(self.net_geometry_decoder.parameters())
-        params.extend(list(self.net_texture.parameters()))
+        params = []
+        if 'geo' in self.opt.use_ngp:
+            params.extend(list(self.net_geometry_decoder.parameters()))
+        if 'color' in self.opt.use_ngp:
+            params.extend(list(self.net_texture.parameters()))
         return params
 
     def other_parameters(self):
