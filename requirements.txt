@@ -6,4 +6,5 @@ h5py
 trimesh
 
 open3d
+opencv-python
 pyglet<2
