@@ -188,7 +188,14 @@ class TextureViewMlp(nn.Module):
         self.color1 = nn.Linear(width, self.channels)
 
         block2 = []
-        block2.append(nn.Linear(width + 3 + 2 * 3 * self.view_freqs, width))
+        if self.use_ngp:
+            self.view_ngp = GridEncoder(input_dim=3,
+                                        num_levels=16, level_dim=2,
+                                        log2_hashmap_size=19,
+                                        base_resolution=16, desired_resolution=2048)
+            block2.append(nn.Linear(width + 32, width))
+        else:
+            block2.append(nn.Linear(width + 3 + 2 * 3 * self.view_freqs, width))
         block2.append(nn.LeakyReLU(0.2))
         for i in range(layers[1]):
             block2.append(nn.Linear(width, width))
@@ -222,8 +229,11 @@ class TextureViewMlp(nn.Module):
             color1 = F.softplus(self.color1(out))
 
         view_dir = view_dir.expand(out.shape[:-1] + (view_dir.shape[-1],))
-        vp = positional_encoding(view_dir, self.view_freqs)
-        out = torch.cat([out, view_dir, vp], dim=-1)
+        if not self.use_ngp:
+            vp = positional_encoding(view_dir, self.view_freqs)
+            out = torch.cat([out, view_dir, vp], dim=-1)
+        else:
+            out = torch.cat([out, self.view_ngp(view_dir)], dim=-1)
         if self.clamp_texture:
             color2 = torch.sigmoid(self.block2(out))
         else:
