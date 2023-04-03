@@ -1,3 +1,9 @@
+import sys
+import os
+import pathlib
+
+sys.path.append(os.path.join(pathlib.Path(__file__).parent.absolute(), ".."))
+
 import os
 import copy
 import torch
@@ -75,12 +81,12 @@ def main():
         mesh.visual.vertex_colors = np.ones_like(c)
         trimesh.repair.fix_inversion(mesh)
         trimesh.repair.fix_normals(mesh)
-        mesh.show(viewer="gl", smooth=True)
+        # mesh.show(viewer="gl", smooth=True)
 
         mesh.visual.vertex_colors = c
         trimesh.repair.fix_inversion(mesh)
         trimesh.repair.fix_normals(mesh)
-        mesh.show(viewer="gl", smooth=True)
+        # mesh.show(viewer="gl", smooth=True)
         mesh.export(os.path.join(rootdir, "mesh_{}.ply".format(i)))
 
     net_texture = model.net_nerf_atlas.module.net_texture
