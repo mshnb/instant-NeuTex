@@ -14,7 +14,7 @@ from data import create_data_loader, create_dataset
 from models import create_model
 from utils.visualizer import Visualizer
 from utils import format as fmt
-
+from tqdm import tqdm
 
 def test(model, dataset, visualizer, opt, test_steps):
 
@@ -45,10 +45,7 @@ def test(model, dataset, visualizer, opt, test_steps):
         raydir = data["raydir"]
 
         visuals = None
-        for k in range(0, height * width, chunk_size):
-            print(
-                "chunk {}/{}".format(k // chunk_size + 1, height * width // chunk_size)
-            )
+        for k in tqdm(range(0, height * width, chunk_size), total=height * width // chunk_size):
             start = k
             end = min([k + chunk_size, height * width])
 

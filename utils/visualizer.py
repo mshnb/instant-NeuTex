@@ -3,10 +3,17 @@ import os
 from PIL import Image
 from collections import OrderedDict
 import time
-
+os.environ['OPENCV_IO_ENABLE_OPENEXR'] = "1"
+import cv2
 # import open3d
 
-
+def sav_exr(img_array, filepath):
+    if len(img_array.shape) == 3 and img_array.shape[2] == 3:
+        img_array = img_array[:,:,::-1]
+        
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    cv2.imwrite(filepath, img_array)
+    
 def save_image(img_array, filepath):
     assert len(img_array.shape) == 2 or (
         len(img_array.shape) == 3 and img_array.shape[2] in [3, 4]
