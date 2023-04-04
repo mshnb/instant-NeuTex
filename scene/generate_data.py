@@ -70,7 +70,7 @@ for i in tqdm(range(args.size)):
     campos_str = ','.join([str(n) for n in campos.tolist()])
     camat_str = ','.join([str(n) for n in camat.tolist()])
     rendering_cmd = f'../mitsuba -m {backend_str} -o {output_path}/data/{i:04d}.exr -Dcampos={campos_str} -Dcamat={camat_str} {input_path}'
-    os.popen(rendering_cmd)
+    os.popen(rendering_cmd).read()
 
 np.save(f'{output_path}/in_camOrgs.npy', campos_list.numpy())
 np.save(f'{output_path}/in_camAts.npy', camat_list.numpy())
