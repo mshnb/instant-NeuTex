@@ -2,8 +2,12 @@
 torch==1.12.1+cu113
 torchaudio==0.12.1+cu113
 torchvision==0.13.1+cu113
+argparse
 h5py
-trimesh
-
 open3d
 pyglet<2
+matplotlib
+numpy
+opencv_python
+tqdm
+trimesh

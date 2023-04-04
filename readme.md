@@ -2,6 +2,13 @@
 
 ## Usage
 
+### Install packages
+```bash
+cd instant-NeuTex
+pip install -r requirement.txt
+```
+add '-i https://pypi.tuna.tsinghua.edu.cn/simple' if any network error happens.
+
 ### Generate dataset by mitsuba3
 1. get mitsuba3 and compile it
     ```bash
@@ -26,7 +33,7 @@
    ```
 4. render dataset
    ```bash
-   python instant-NeuTex/scene/generate_data.py --gpu -size 256
+   python instant-NeuTex/scene/generate_data.py --gpu --size 256
    ```
 
 ### Train instant-NeuTex
@@ -35,6 +42,11 @@ cd instant-NeuTex/run
 bash bunny.sh 404
 ```
 
-'404' is the name of this training process  
-Install any missing library from pip
+### Generate texture from pre-trained model
+```bash
+cd instant-NeuTex/export
+python export.py
+```
+
+'404' is the name of this training process
 

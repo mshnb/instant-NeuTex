@@ -99,13 +99,13 @@ class BaseOptions:
 
         return parser
 
-    def gather_options(self, modify):
+    def gather_options(self, modify, params=None):
         parser = argparse.ArgumentParser(
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
         parser = self.initialize(parser)
-
-        opt, _ = parser.parse_known_args()
+        
+        opt, _ = parser.parse_known_args(args=params)
 
         model_name = opt.model
         find_model_class_by_name(model_name).modify_commandline_options(
@@ -122,7 +122,7 @@ class BaseOptions:
 
         self.parser = parser
 
-        return parser.parse_args()
+        return parser.parse_args(args=params)
 
     def print_and_save_options(self, opt):
         message = ""
@@ -147,8 +147,8 @@ class BaseOptions:
             opt_file.write(message)
             opt_file.write("\n")
 
-    def parse(self, modify=None):
-        opt = self.gather_options(modify)
+    def parse(self, modify=None, params=None):
+        opt = self.gather_options(modify=modify, params=params)
         opt.is_train = self.is_train
 
         if opt.timestamp:
