@@ -31,10 +31,13 @@ parser.add_argument('-i', '--input', type=str, default=r'./bunny/bunny.xml', hel
 parser.add_argument('-o', '--output', type=str, default=r'../run/bunny', help='output path of the dataset')
 parser.add_argument('--gpu', action='store_true', help='use mitsuba3\'s gpu backend')
 parser.add_argument('--clear', action='store_true', help='delete all prev data')
+parser.add_argument('--mi', type=str, default='../mitsuba', help='locate mitsuba')
 args = parser.parse_args()
 
-if not os.path.exists('../mitsuba'):
-    print('can\'t find mitsuba in ../')
+mi = args.mi
+
+if not os.path.exists(mi):
+    print(f'can\'t find mitsuba in {mi}')
     exit()
 
 input_path = args.input
@@ -71,7 +74,7 @@ for i in tqdm(range(args.size)):
 
     campos_str = ','.join([str(n) for n in campos.tolist()])
     camat_str = ','.join([str(n) for n in camat.tolist()])
-    rendering_cmd = f'../mitsuba -m {backend_str} -o {output_path}/data/{i:04d}.exr -Dcampos={campos_str} -Dcamat={camat_str} {input_path}'
+    rendering_cmd = f'{mi} -m {backend_str} -o {output_path}/data/{i:04d}.exr -Dcampos={campos_str} -Dcamat={camat_str} {input_path}'
     os.popen(rendering_cmd).read()
 
 if args.addition > 0:
@@ -91,7 +94,7 @@ if args.addition > 0:
 
         campos_str = ','.join([str(n) for n in campos.tolist()])
         camat_str = ','.join([str(n) for n in camat.tolist()])
-        rendering_cmd = f'../mitsuba -m {backend_str} -o {output_path}/data/{i:04d}.exr -Dcampos={campos_str} -Dcamat={camat_str} {input_path}'
+        rendering_cmd = f'{mi} -m {backend_str} -o {output_path}/data/{i:04d}.exr -Dcampos={campos_str} -Dcamat={camat_str} {input_path}'
         os.popen(rendering_cmd).read()
 
 np.save(f'{output_path}/in_camOrgs.npy', campos_list.numpy())
