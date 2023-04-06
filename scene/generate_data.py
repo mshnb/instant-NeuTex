@@ -25,7 +25,8 @@ def lookat(origin, target, up):
     return mat_lookat
 
 parser = ArgumentParser()
-parser.add_argument('-s', '--size', type=int, default=128, help='number of views')
+parser.add_argument('-s', '--size', type=int, default=256, help='number of views')
+parser.add_argument('-a', '--addition', type=int, default=64, help='number of additional views in the top sphere')
 parser.add_argument('-i', '--input', type=str, default=r'./bunny/bunny.xml', help='input scene xml path')
 parser.add_argument('-o', '--output', type=str, default=r'../run/bunny', help='output path of the dataset')
 parser.add_argument('--gpu', action='store_true', help='use mitsuba3\'s gpu backend')
@@ -50,9 +51,10 @@ center = torch.asarray([0, 0.5, 0])
 
 mutation = 0.1
 
-campos_list = torch.empty(args.size, 3)
-camat_list = torch.empty(args.size, 3)
-mat_list = torch.empty(args.size, 3, 3)
+total_size = args.size + args.addition
+campos_list = torch.empty(total_size, 3)
+camat_list = torch.empty(total_size, 3)
+mat_list = torch.empty(total_size, 3, 3)
 
 for i in tqdm(range(args.size)):
     theta = 2 * math.pi * i / args.size
@@ -71,6 +73,26 @@ for i in tqdm(range(args.size)):
     camat_str = ','.join([str(n) for n in camat.tolist()])
     rendering_cmd = f'../mitsuba -m {backend_str} -o {output_path}/data/{i:04d}.exr -Dcampos={campos_str} -Dcamat={camat_str} {input_path}'
     os.popen(rendering_cmd).read()
+
+if args.addition > 0:
+    for i in tqdm(range(args.addition)):
+        theta = 2 * math.pi * (random.random() * mutation + i / args.addition)
+        cosPhi = random.random()
+        sinPhi = math.sqrt(1 - cosPhi * cosPhi)
+
+        dist = radius + (random.random() * 2 - 1) * mutation
+        campos = center + torch.asarray([math.cos(theta) * sinPhi, cosPhi, math.sin(theta) * sinPhi]) * dist
+        camat = center + torch.rand(3) * mutation
+
+        i += args.size
+        campos_list[i] = campos
+        camat_list[i] = camat
+        mat_list[i] = torch.from_numpy(lookat(campos, camat, np.asarray([0, 1, 0]))[:3,:3])
+
+        campos_str = ','.join([str(n) for n in campos.tolist()])
+        camat_str = ','.join([str(n) for n in camat.tolist()])
+        rendering_cmd = f'../mitsuba -m {backend_str} -o {output_path}/data/{i:04d}.exr -Dcampos={campos_str} -Dcamat={camat_str} {input_path}'
+        os.popen(rendering_cmd).read()
 
 np.save(f'{output_path}/in_camOrgs.npy', campos_list.numpy())
 np.save(f'{output_path}/in_camAts.npy', camat_list.numpy())
