@@ -58,7 +58,7 @@ class InverseAtlasnet(nn.Module):
             self.output_dim = 3
 
         self.encoders = nn.ModuleList(
-            [MappingManifold(code_size, 3, self.output_dim + 1) for i in range(0, num_primitives)]
+            [MappingManifold(code_size, 3, self.output_dim) for i in range(0, num_primitives)]
         )
 
     def forward(self, latent_vector, points):
@@ -77,10 +77,7 @@ class InverseAtlasnet(nn.Module):
         output = output.view(input_shape[:-1] + output.shape[-2:])
 
         if self.output_dim == 2:
-            uv = torch.tanh(output[..., :-1])
+            uv = torch.tanh(output)
         else:
-            uv = F.normalize(output[..., :-1], dim=-1)
-
-        weights_logits = output[..., -1]
-        weights = torch.softmax(weights_logits, dim=-1)
-        return uv, weights, weights_logits
+            uv = F.normalize(output, dim=-1)
+        return uv

@@ -19,13 +19,11 @@ class GeometryMlpDecoder(nn.Module):
         brdf_dim,
         hidden_size,
         num_layers,
-        requested_features={"density", "normal"},  # density, normal/frame, uv, brdf
-        use_ngp=False
+        requested_features={"density", "normal"}  # density, normal/frame, uv, brdf
     ):
         super().__init__()
 
         assert code_dim >= 0
-        assert pos_freqs >= 0
         assert uv_dim >= 0
         if uv_dim > 0:
             assert uv_dim >= 1
@@ -47,12 +45,7 @@ class GeometryMlpDecoder(nn.Module):
         self.uv_dim = uv_dim
         self.uv_count = uv_count
         self.requested_features = requested_features
-        self.use_ngp = use_ngp
-        if not self.use_ngp:
-            self.input_channels = code_dim + 3 + 6 * pos_freqs
-        else:
-            self.input_channels = code_dim + 32
-        self.pos_freqs = pos_freqs
+        self.input_channels = code_dim + 32
         self.brdf_dim = brdf_dim
 
         self.output_dim = 0
@@ -68,11 +61,10 @@ class GeometryMlpDecoder(nn.Module):
             self.output_dim += self.brdf_dim
 
         block = []
-        if self.use_ngp:
-            block.append(GridEncoder(input_dim=3,
-                                     num_levels=16, level_dim=2,
-                                     log2_hashmap_size=19,
-                                     base_resolution=16, desired_resolution=2048))
+        block.append(GridEncoder(input_dim=3,
+                                    num_levels=16, level_dim=2,
+                                    log2_hashmap_size=19,
+                                    base_resolution=16, desired_resolution=2048))
         block.append(nn.Linear(self.input_channels, hidden_size))
         block.append(nn.ReLU())
         for i in range(num_layers):
@@ -89,31 +81,11 @@ class GeometryMlpDecoder(nn.Module):
             pts: :math:`(N,Rays,Samples,3)`
         """
         assert input_code is None or len(input_code.shape) == 2
-        assert input_code is None or input_code.shape[-1] == self.code_dim
         assert len(pts.shape) == 4
         assert pts.shape[-1] == 3
         assert input_code is None or input_code.shape[0] == pts.shape[0]
 
-        if self.code_dim > 0:
-            input_code = input_code[:, None, None, :].expand(
-                pts.shape[:-1] + (input_code.shape[-1],)
-            )
-            if self.pos_freqs > 0:
-                self.output = self.block(
-                    torch.cat(
-                        [input_code, pts, positional_encoding(pts, self.pos_freqs)],
-                        dim=-1,
-                    )
-                )
-            else:
-                self.output = self.block(torch.cat([input_code, pts], dim=-1))
-        else:
-            if self.pos_freqs > 0:
-                self.output = self.block(
-                    torch.cat([pts, positional_encoding(pts, self.pos_freqs)], dim=-1)
-                )
-            else:
-                self.output = self.block(pts)
+        self.output = self.block(pts)
 
         output = {}
         index = 0

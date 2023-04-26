@@ -19,7 +19,7 @@ class Mapping2Dto3D(nn.Module):
         self,
         code_size,
         input_point_dim,
-        hidden_size=512,
+        hidden_size=128,
         num_layers=2,
         activation="relu",
     ):

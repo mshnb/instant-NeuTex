@@ -8,11 +8,12 @@ dataset_name='bunny'
 data_root="bunny"
 
 random_sample='balanced'
-random_sample_size=48
-sample_num=256
+random_sample_size=64
+sample_num=128
 
 geometry_embedding_dim=64
-primitive_type='sphere'
+# primitive_type='sphere'
+primitive_type='square'
 primitive_count=1
 points_per_primitive=2500
 texture_decoder_type='texture_view_mlp_mix'
@@ -81,5 +82,5 @@ python3 train.py  \
         --print_freq=$print_freq  \
         --test_freq=$test_freq  \
         --verbose  \
-        --texture_decoder_width=256  \
-        --texture_decoder_depth=5,3
+        --texture_decoder_width=64  \
+        --texture_decoder_depth=2,2

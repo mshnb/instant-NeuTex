@@ -12,7 +12,7 @@ import time
 from options import TrainOptions
 from data import create_data_loader, create_dataset
 from models import create_model
-from utils.visualizer import Visualizer
+from utils.visualizer import Visualizer, sav_exr
 from utils import format as fmt
 from tqdm import tqdm
 
@@ -22,6 +22,21 @@ def test(model, dataset, visualizer, opt, test_steps):
         "-----------------------------------Testing-----------------------------------"
     )
     model.eval()
+
+    # generate texture
+    result = None
+    for i, pos in enumerate(tqdm(dataset.campos)):
+        viewdir = -pos / np.linalg.norm(pos)
+        texture = model.net_nerf_atlas.module.net_texture.textures[0].export_textures(512, viewdir)
+
+        if result is None:
+            result = texture
+        else:
+            result = torch.max(result, texture)
+
+    result = result ** (1 / 2.2)
+    visualizer.display_texture(test_steps, result.cpu(), 'texture') 
+
     total_num = len(dataset)
     select_ids = np.random.choice(range(total_num), opt.test_num)
     patch_size = opt.random_sample_size
@@ -45,7 +60,7 @@ def test(model, dataset, visualizer, opt, test_steps):
         raydir = data["raydir"]
 
         visuals = None
-        for k in tqdm(range(0, height * width, chunk_size), total=height * width // chunk_size):
+        for k in range(0, height * width, chunk_size):
             start = k
             end = min([k + chunk_size, height * width])
 
@@ -148,6 +163,7 @@ def main():
     # for epoch in range(epoch_count, total_epochs + 1):
     epoch = epoch_count
     stop_iteration = False
+
     while not stop_iteration:
         epoch_start_time = time.time()
         epoch_iter = 0

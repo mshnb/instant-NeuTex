@@ -4,8 +4,7 @@ import torch
 import os
 import os.path as osp
 import glob
-os.environ['OPENCV_IO_ENABLE_OPENEXR'] = "1"
-import cv2
+import imageio
 from .base_dataset import BaseDataset
 
 def perspective(fov, near, far):
@@ -71,7 +70,7 @@ class BunnyDataset(BaseDataset):
             "--use_test_data", type=int, default=-1, help="train or test dataset",
         )
         parser.add_argument(
-            "--test_views", type=str, default="6,34,73,112,155,190,221,248", help="held out views",
+            "--test_views", type=str, default="0,2,32,46,66,69,80,95", help="held out views",
         )
 
         return parser
@@ -110,12 +109,11 @@ class BunnyDataset(BaseDataset):
         print("Loading data in memory")
         self.gt_image = []
         self.gt_mask = []
-        files = sorted(glob.glob(osp.join(self.data_dir, 'data', '[0-9]*.exr')), key=lambda path: int(path[-8:-4]))
+        files = sorted(glob.glob(osp.join(self.data_dir, 'data', '[0-9]*.png')), key=lambda path: int(path[-8:-4]))
         for file in files:
-            img = cv2.imread(file, cv2.IMREAD_UNCHANGED)[:,:,::-1]
-            img = np.power(img, 1.0/2.2)
-            mask = torch.from_numpy(np.sum(img, axis=-1, keepdims=True) > 0).long()
-
+            img = np.asarray(imageio.imread(file)) / 255
+            mask = torch.from_numpy(img[...,[-1]] > 0).long()
+            img = img[...,:3]
             self.gt_image.append(img)
             self.gt_mask.append(mask)
 
@@ -123,10 +121,10 @@ class BunnyDataset(BaseDataset):
 
         self.height = self.gt_image[0].shape[0]
         self.width = self.gt_image[0].shape[1]
-        print("center cam pos: ", self.campos[128])
-        self.center_cam_pos = self.campos[128]
+        print("center cam pos: ", self.campos[69])
+        self.center_cam_pos = self.campos[69]
 
-        self.m_sample_to_camera = perspective_projection([self.height,self.width], 19.5, 1e-2, 1e4).I
+        self.m_sample_to_camera = perspective_projection([self.height,self.width], 40, 1e-2, 2).I
 
     def __len__(self):
         return len(self.indexes)

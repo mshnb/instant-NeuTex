@@ -57,13 +57,6 @@ class BaseOptions:
             help="name of model, determine which network model to use",
         )
 
-        parser.add_argument(
-            "--use_ngp",
-            type=str,
-            nargs='+',
-            default=[]
-        )
-
         # ================================ running ================================#
         parser.add_argument(
             "--batch_size", type=int, default=1, help="input batch size"

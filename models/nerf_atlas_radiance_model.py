@@ -23,37 +23,19 @@ class NerfAtlasNetwork(nn.Module):
         self.opt = opt
 
         self.net_geometry_embedding = LpEmbedding(1, self.opt.geometry_embedding_dim)
-        self.use_ngp = bool(self.opt.use_ngp)
-
-        if 'geo' not in self.opt.use_ngp:
-            self.net_geometry_decoder = GeometryMlpDecoder(
-                code_dim=0,
-                pos_freqs=10,
-                uv_dim=0,
-                uv_count=0,
-                brdf_dim=3,
-                hidden_size=256,
-                num_layers=10,
-                requested_features={
-                    "density",
-                    # , "brdf"
-                },
-            )
-        else:
-            self.net_geometry_decoder = GeometryMlpDecoder(
-                code_dim=0,
-                pos_freqs=0,
-                uv_dim=0,
-                uv_count=0,
-                brdf_dim=3,
-                hidden_size=64,
-                num_layers=1,
-                requested_features={
-                    "density",
-                    # , "brdf"
-                },
-                use_ngp=True
-            )
+        self.net_geometry_decoder = GeometryMlpDecoder(
+            code_dim=0,
+            pos_freqs=0,
+            uv_dim=0,
+            uv_count=0,
+            brdf_dim=3,
+            hidden_size=64,
+            num_layers=1,
+            requested_features={
+                "density",
+                # , "brdf"
+            }
+        )
 
         self.net_atlasnet = Atlasnet(
             self.opt.points_per_primitive,
@@ -71,30 +53,16 @@ class NerfAtlasNetwork(nn.Module):
 
         # other types are not part of the release
         assert opt.texture_decoder_type == "texture_view_mlp_mix"
-
-        if 'color' not in self.opt.use_ngp:
-            self.net_texture = TextureViewMlpMix(
-                count=opt.primitive_count,
-                out_channels=3,
-                num_freqs=10,
-                view_freqs=6,
-                uv_dim=2 if self.opt.primitive_type == "square" else 3,
-                layers=[int(x) for x in self.opt.texture_decoder_depth.split(",")],
-                width=self.opt.texture_decoder_width,
-                clamp=False,
-            )
-        else:
-            self.net_texture = TextureViewMlpMix(
-                count=opt.primitive_count,
-                out_channels=3,
-                num_freqs=0,
-                view_freqs=6,
-                uv_dim=2 if self.opt.primitive_type == "square" else 3,
-                layers=[2, 0],
-                width=64,
-                clamp=False,
-                use_ngp=True
-            )
+        self.net_texture = TextureViewMlpMix(
+            count=opt.primitive_count,
+            out_channels=3,
+            num_freqs=0,
+            view_freqs=5,
+            uv_dim=2 if self.opt.primitive_type == "square" else 3,
+            layers=[2, 2],
+            width=64,
+            clamp=False
+        )
         self.raygen = find_ray_generation_method("cube")
 
     def forward(
@@ -106,13 +74,12 @@ class NerfAtlasNetwork(nn.Module):
         compute_inverse_mapping=False,
         compute_atlasnet_density=False,
     ):
-        output = {}
-
         zeros = torch.zeros(
             camera_position.shape[0], dtype=torch.long, device=camera_position.device
         )
         geometry_embedding = self.net_geometry_embedding(zeros)
 
+        output = {}
         orig_ray_pos, ray_dist, ray_valid, ray_ts = self.raygen(
             camera_position, ray_direction, self.opt.sample_num, jitter=0.05
         )
@@ -129,11 +96,7 @@ class NerfAtlasNetwork(nn.Module):
                 0, 2, 1
             )  # (N, 3, total_points)
 
-            (
-                output["points_2d_inverse"],
-                output["weights_inverse"],
-                output["weights_inverse_logits"],
-            ) = self.net_inverse_atlasnet(
+            output["points_2d_inverse"] = self.net_inverse_atlasnet(
                 geometry_embedding,
                 points_3d.view(points_3d.shape[0], -1, points_3d.shape[-1]),
             )
@@ -149,10 +112,10 @@ class NerfAtlasNetwork(nn.Module):
                 for param in self.net_geometry_decoder.parameters():
                     param.requires_grad_(True)
 
-        uv, weights, logits = self.net_inverse_atlasnet(geometry_embedding, ray_pos)
+        uv = self.net_inverse_atlasnet(geometry_embedding, ray_pos)
 
         point_features = self.net_texture(
-            None, uv, ray_direction[:, :, None, :], weights
+            None, uv, ray_direction[:, :, None, :]
         )
         # point_features = torch.ones_like(point_features, device=point_features.device)
 
@@ -195,17 +158,14 @@ class NerfAtlasNetwork(nn.Module):
             if points_inverse is None:
                 points_inverse = self.net_atlasnet.map(geometry_embedding, uv)
             output["points_inverse"] = points_inverse
-            output["points_inverse_primitive_weights"] = weights
             output["points_inverse_weights"] = blend_weight
 
         return output
 
     def ngp_parameters(self):
         params = []
-        if 'geo' in self.opt.use_ngp:
-            params.extend(list(self.net_geometry_decoder.parameters()))
-        if 'color' in self.opt.use_ngp:
-            params.extend(list(self.net_texture.parameters()))
+        params.extend(list(self.net_geometry_decoder.parameters()))
+        params.extend(list(self.net_texture.parameters()))
         return params
 
     def other_parameters(self):
@@ -340,17 +300,12 @@ class NerfAtlasRadianceModel(BaseModel):
         if self.is_train:
             self.schedulers = []
             self.optimizers = []
-
-            if not self.net_nerf_atlas.module.use_ngp:
-                params = list(self.net_nerf_atlas.parameters())
-                self.optimizer = torch.optim.Adam(params, lr=opt.lr)
-            else:
-                other_params = self.net_nerf_atlas.module.other_parameters()
-                ngp_params = self.net_nerf_atlas.module.ngp_parameters()
-                self.optimizer = torch.optim.Adam([
-                    {'params': other_params, 'lr': opt.lr},
-                    {'params': ngp_params, 'lr': opt.lr * 100},
-                ])
+            other_params = self.net_nerf_atlas.module.other_parameters()
+            ngp_params = self.net_nerf_atlas.module.ngp_parameters()
+            self.optimizer = torch.optim.Adam([
+                {'params': other_params, 'lr': opt.lr},
+                {'params': ngp_params, 'lr': opt.lr * 10},
+            ])
             self.optimizers.append(self.optimizer)
 
         if self.opt.sphere_init > 0:
@@ -473,11 +428,10 @@ class NerfAtlasRadianceModel(BaseModel):
         if self.opt.loss_inverse_mapping_weight > 0:
             gt_points = self.output["points_original"]
             points = self.output["points_inverse"]
-            ppw = self.output["points_inverse_primitive_weights"]
             pw = self.output["points_inverse_weights"]
 
             dist = ((gt_points[..., None, :] - points) ** 2).sum(-1)
-            dist = (dist * ppw).sum(-1)
+            dist = dist.sum(-1)
             dist = (dist * pw).sum(-1)
             dist = dist.mean()
 
