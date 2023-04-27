@@ -17,12 +17,12 @@ class InverseAtlasnet(nn.Module):
         self.num_layers = 2
         self.hidden_neurons = 128
 
-        self.linear1 = nn.Linear(self.input_dim, self.hidden_neurons)
+        self.linear1 = nn.Linear(self.input_dim, self.hidden_neurons, bias=False)
         init_weights(self.linear1)
 
         self.linear_list = nn.ModuleList(
             [
-                nn.Linear(self.hidden_neurons, self.hidden_neurons)
+                nn.Linear(self.hidden_neurons, self.hidden_neurons, bias=False)
                 for i in range(self.num_layers)
             ]
         )
@@ -30,7 +30,7 @@ class InverseAtlasnet(nn.Module):
         for l in self.linear_list:
             init_weights(l)
 
-        self.last_linear = nn.Linear(self.hidden_neurons, self.output_dim)
+        self.last_linear = nn.Linear(self.hidden_neurons, self.output_dim, bias=False)
         init_weights(self.last_linear)
 
         self.activation = F.relu

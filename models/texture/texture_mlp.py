@@ -39,22 +39,22 @@ class TextureViewMlp(nn.Module):
         )
 
         block1 = []
-        block1.append(nn.Linear(32, width))
+        block1.append(nn.Linear(32, width, bias=False))
         block1.append(nn.ReLU())
         for i in range(layers[0]):
-            block1.append(nn.Linear(width, width))
+            block1.append(nn.Linear(width, width, bias=False))
             block1.append(nn.ReLU())
-        block1.append(nn.Linear(width, self.channels))
+        block1.append(nn.Linear(width, self.channels, bias=False))
         self.block1 = nn.Sequential(*block1)
         init_seq(self.block1)
 
         block2 = []
-        block2.append(nn.Linear(32 + 2 * 3 * self.view_freqs, width))
+        block2.append(nn.Linear(32 + 2 * 3 * self.view_freqs, width, bias=False))
         block2.append(nn.ReLU())
         for i in range(layers[1]):
-            block2.append(nn.Linear(width, width))
+            block2.append(nn.Linear(width, width, bias=False))
             block2.append(nn.ReLU())
-        block2.append(nn.Linear(width, self.channels))
+        block2.append(nn.Linear(width, self.channels, bias=False))
         self.block2 = nn.Sequential(*block2)
         init_seq(self.block2)
 

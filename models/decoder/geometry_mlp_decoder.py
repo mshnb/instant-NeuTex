@@ -65,12 +65,12 @@ class GeometryMlpDecoder(nn.Module):
                                     num_levels=16, level_dim=2,
                                     log2_hashmap_size=19,
                                     base_resolution=16, desired_resolution=2048))
-        block.append(nn.Linear(self.input_channels, hidden_size))
+        block.append(nn.Linear(self.input_channels, hidden_size, bias=False))
         block.append(nn.ReLU())
         for i in range(num_layers):
-            block.append(nn.Linear(hidden_size, hidden_size))
+            block.append(nn.Linear(hidden_size, hidden_size, bias=False))
             block.append(nn.ReLU())
-        block.append(nn.Linear(hidden_size, self.output_dim))
+        block.append(nn.Linear(hidden_size, self.output_dim, bias=False))
         self.block = nn.Sequential(*block)
         init_seq(self.block)
 
