@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-
 from gridencoder import GridEncoder
+from shencoder import SHEncoder
 from ..networks import init_seq, positional_encoding
 from utils.grid import generate_grid
 from utils.cube_map import (
@@ -24,11 +24,11 @@ def torch_logit(x):
 
 class TextureViewMlp(nn.Module):
     def __init__(
-            self, uv_dim, out_channels, view_freqs, layers, width, clamp, pred_normal, use_bias=False
+            self, uv_dim, out_channels, view_freqs, layers, width, clamp, pred_normal=False, use_bias=False
     ):
         super().__init__()
         self.uv_dim = uv_dim
-        self.view_freqs = max(view_freqs, 0)
+        # self.view_freqs = max(view_freqs, 0)
         self.channels = out_channels
 
         self.uv_encoder = GridEncoder(
@@ -48,8 +48,10 @@ class TextureViewMlp(nn.Module):
         self.block1 = nn.Sequential(*block1)
         init_seq(self.block1)
 
+        self.dir_encoder = SHEncoder(input_dim=3, degree=4)
+
         block2 = []
-        block2.append(nn.Linear(32 + 2 * 3 * self.view_freqs, width, bias=use_bias))
+        block2.append(nn.Linear(32 + 16, width, bias=use_bias))
         block2.append(nn.ReLU())
         for i in range(layers[1]):
             block2.append(nn.Linear(width, width, bias=use_bias))
@@ -62,16 +64,16 @@ class TextureViewMlp(nn.Module):
         self.clamp_texture = clamp
 
         self.block_normal = None
-        if pred_normal:
-            block3 = []
-            block3.append(nn.Linear(32, width, bias=use_bias))
-            block3.append(nn.ReLU())
-            for i in range(2):
-                block3.append(nn.Linear(width, width, bias=use_bias))
-                block3.append(nn.ReLU())
-            block3.append(nn.Linear(width, 3, bias=use_bias))
-            self.block_normal = nn.Sequential(*block3)
-            init_seq(self.block_normal)
+        # if pred_normal:
+        #     block3 = []
+        #     block3.append(nn.Linear(32, width, bias=use_bias))
+        #     block3.append(nn.ReLU())
+        #     for i in range(2):
+        #         block3.append(nn.Linear(width, width, bias=use_bias))
+        #         block3.append(nn.ReLU())
+        #     block3.append(nn.Linear(width, 3, bias=use_bias))
+        #     self.block_normal = nn.Sequential(*block3)
+        #     init_seq(self.block_normal)
 
 
     def forward(self, uv, view_dir):
@@ -82,10 +84,10 @@ class TextureViewMlp(nn.Module):
         """
         h = self.uv_encoder(uv)
 
-        normal = None
-        if self.block_normal is not None:
-            normal = self.block_normal(h)
-            normal = F.normalize(normal, dim=-1, eps=1e-6)
+        # normal = None
+        # if self.block_normal is not None:
+        #     normal = self.block_normal(h)
+        #     normal = F.normalize(normal, dim=-1, eps=1e-6)
 
         diffuse = self.block1(h)
         if self.clamp_texture:
@@ -94,7 +96,8 @@ class TextureViewMlp(nn.Module):
             diffuse = F.softplus(diffuse)
 
         view_dir = view_dir.expand(diffuse.shape[:-1] + (view_dir.shape[-1],))
-        vp = positional_encoding(view_dir, self.view_freqs)
+        # vp = positional_encoding(view_dir, self.view_freqs)
+        vp = self.dir_encoder(view_dir)
         h = torch.cat([h, vp], dim=-1)
         specular = self.block2(h)
         if self.clamp_texture:
@@ -104,7 +107,7 @@ class TextureViewMlp(nn.Module):
 
         return {
             'color': diffuse + specular, 
-            'normal': normal
+            # 'normal': normal
         }
 
     def _export_cube(self, resolution, viewdir):

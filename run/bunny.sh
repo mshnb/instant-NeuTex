@@ -53,6 +53,9 @@ bias=0
 
 python3 train.py  \
         --name=$name  \
+        --loss_normal=$loss_normal  \
+        --bias=$bias  \
+        --points_per_primitive=$points_per_primitive  \
         --model=$model  \
         --dataset_name=$dataset_name  \
         --data_root=$data_root  \
@@ -62,7 +65,6 @@ python3 train.py  \
         --geometry_embedding_dim=$geometry_embedding_dim  \
         --primitive_type=$primitive_type  \
         --primitive_count=$primitive_count  \
-        --points_per_primitive=$points_per_primitive  \
         --texture_decoder_type=$texture_decoder_type  \
         --atlasnet_activation=$atlasnet_activation  \
         --loss_color_weight=$loss_color_weight  \
@@ -86,6 +88,5 @@ python3 train.py  \
         --test_freq=$test_freq  \
         --verbose  \
         --texture_decoder_width=64  \
-        --texture_decoder_depth=2,2 \
-        --loss_normal=$loss_normal \
-        --bias=$bias
+        --texture_decoder_depth=2,2
+

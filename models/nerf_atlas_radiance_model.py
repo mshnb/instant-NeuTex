@@ -32,10 +32,7 @@ class NerfAtlasNetwork(nn.Module):
             brdf_dim=3,
             hidden_size=64,
             num_layers=1,
-            requested_features={
-                "density",
-                # , "brdf"
-            },
+            pred_normal=self.pred_normal,
             use_bias=self.use_bias
         )
 
@@ -64,7 +61,6 @@ class NerfAtlasNetwork(nn.Module):
             layers=[2, 2],
             width=64,
             clamp=False,
-            pred_normal=self.pred_normal,
             use_bias=self.use_bias
         )
         self.raygen = find_ray_generation_method("cube")
@@ -114,7 +110,7 @@ class NerfAtlasNetwork(nn.Module):
 
         outputs = self.net_texture(uv, ray_direction[:, :, None, :])
 
-        density = mlp_output["density"][..., None]
+        density = mlp_output["density"]
         radiance = outputs['color']
         bsdf = [density, radiance]
         bsdf = torch.cat(bsdf, dim=-1)
@@ -152,7 +148,8 @@ class NerfAtlasNetwork(nn.Module):
         output['uv'] = torch.cat([integrated_uv, torch.zeros(*integrated_uv.shape[:-1], 1, device=uv.device)], dim=-1)
 
         if self.pred_normal:
-            normal = outputs['normal']
+            # normal = outputs['normal']
+            normal = mlp_output["normal"]
             output['normal'] = normal
             output['sigma_grad'] = mlp_output["sigma_grad"]
 
