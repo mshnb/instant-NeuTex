@@ -24,7 +24,7 @@ def torch_logit(x):
 
 class TextureViewMlp(nn.Module):
     def __init__(
-            self, uv_dim, out_channels, view_freqs, layers, width, clamp
+            self, uv_dim, out_channels, view_freqs, layers, width, clamp, pred_normal, use_bias=False
     ):
         super().__init__()
         self.uv_dim = uv_dim
@@ -39,35 +39,54 @@ class TextureViewMlp(nn.Module):
         )
 
         block1 = []
-        block1.append(nn.Linear(32, width, bias=False))
+        block1.append(nn.Linear(32, width, bias=use_bias))
         block1.append(nn.ReLU())
         for i in range(layers[0]):
-            block1.append(nn.Linear(width, width, bias=False))
+            block1.append(nn.Linear(width, width, bias=use_bias))
             block1.append(nn.ReLU())
-        block1.append(nn.Linear(width, self.channels, bias=False))
+        block1.append(nn.Linear(width, self.channels, bias=use_bias))
         self.block1 = nn.Sequential(*block1)
         init_seq(self.block1)
 
         block2 = []
-        block2.append(nn.Linear(32 + 2 * 3 * self.view_freqs, width, bias=False))
+        block2.append(nn.Linear(32 + 2 * 3 * self.view_freqs, width, bias=use_bias))
         block2.append(nn.ReLU())
         for i in range(layers[1]):
-            block2.append(nn.Linear(width, width, bias=False))
+            block2.append(nn.Linear(width, width, bias=use_bias))
             block2.append(nn.ReLU())
-        block2.append(nn.Linear(width, self.channels, bias=False))
+        block2.append(nn.Linear(width, self.channels, bias=use_bias))
         self.block2 = nn.Sequential(*block2)
         init_seq(self.block2)
 
         self.cubemap_ = None
         self.clamp_texture = clamp
 
-    def forward(self,uv, view_dir):
+        self.block_normal = None
+        if pred_normal:
+            block3 = []
+            block3.append(nn.Linear(32, width, bias=use_bias))
+            block3.append(nn.ReLU())
+            for i in range(2):
+                block3.append(nn.Linear(width, width, bias=use_bias))
+                block3.append(nn.ReLU())
+            block3.append(nn.Linear(width, 3, bias=use_bias))
+            self.block_normal = nn.Sequential(*block3)
+            init_seq(self.block_normal)
+
+
+    def forward(self, uv, view_dir):
         """
         Args:
             uvs: :math:`(N,Rays,Samples,U)`
             view_dir: :math:`(N,Rays,Samples,3)`
         """
         h = self.uv_encoder(uv)
+
+        normal = None
+        if self.block_normal is not None:
+            normal = self.block_normal(h)
+            normal = F.normalize(h, dim=-1, eps=1e-6)
+
         diffuse = self.block1(h)
         if self.clamp_texture:
             diffuse = torch.sigmoid(diffuse)
@@ -83,7 +102,10 @@ class TextureViewMlp(nn.Module):
         else:
             specular = F.softplus(specular)
 
-        return diffuse + specular
+        return {
+            'color': diffuse + specular, 
+            'normal': normal
+        }
 
     def _export_cube(self, resolution, viewdir):
         device = next(self.block1.parameters()).device
@@ -132,7 +154,7 @@ class TextureViewMlp(nn.Module):
                     torch.cat([xyz, positional_encoding(xyz, self.num_freqs)], dim=-1)
                 )
                 texture = torch.sigmoid(self.color1(out))
-            return texture.flip(0)
+            return texture['color'].flip(0)
 
     def _export_square(self, resolution, viewdir):
         with torch.no_grad():
@@ -151,7 +173,7 @@ class TextureViewMlp(nn.Module):
                 )
                 texture = torch.sigmoid(self.color1(out))
 
-            return texture
+            return texture['color']
 
     def export_textures(self, resolution=512, viewdir=[0, 0, 1]):
         if self.uv_dim == 3:

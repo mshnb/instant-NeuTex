@@ -19,7 +19,8 @@ class GeometryMlpDecoder(nn.Module):
         brdf_dim,
         hidden_size,
         num_layers,
-        requested_features={"density", "normal"}  # density, normal/frame, uv, brdf
+        requested_features={"density", "normal"},  # density, normal/frame, uv, brdf
+        use_bias=False
     ):
         super().__init__()
 
@@ -65,16 +66,16 @@ class GeometryMlpDecoder(nn.Module):
                                     num_levels=16, level_dim=2,
                                     log2_hashmap_size=19,
                                     base_resolution=16, desired_resolution=2048))
-        block.append(nn.Linear(self.input_channels, hidden_size, bias=False))
+        block.append(nn.Linear(self.input_channels, hidden_size, bias=use_bias))
         block.append(nn.ReLU())
         for i in range(num_layers):
-            block.append(nn.Linear(hidden_size, hidden_size, bias=False))
+            block.append(nn.Linear(hidden_size, hidden_size, bias=use_bias))
             block.append(nn.ReLU())
-        block.append(nn.Linear(hidden_size, self.output_dim, bias=False))
+        block.append(nn.Linear(hidden_size, self.output_dim, bias=use_bias))
         self.block = nn.Sequential(*block)
         init_seq(self.block)
 
-    def forward(self, input_code, pts):
+    def forward(self, input_code, pts, require_grad=False):
         """
         Args:
             input_code: :math:`(N,E)`
@@ -90,8 +91,14 @@ class GeometryMlpDecoder(nn.Module):
         output = {}
         index = 0
         if "density" in self.requested_features:
-            output["raw_density"] = self.output[..., 0]
-            output["density"] = F.softplus(output["raw_density"])
+            sigma = self.output[..., 0]
+            if require_grad:
+                scale = torch.full_like(sigma, 1e-4, requires_grad=False)
+                grad = torch.autograd.grad(sigma, pts, scale, retain_graph=True, create_graph=True, only_inputs=True)[0]
+                grad = -F.normalize(grad, dim=-1, eps=1e-6)
+                output["sigma_grad"] = grad
+
+            output["density"] = F.softplus(sigma)
             index += 1
         if "uv" in self.requested_features:
             output["uv"] = torch.tanh(

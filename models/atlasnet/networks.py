@@ -65,6 +65,7 @@ class Atlasnet(nn.Module):
         code_size,
         activation,
         primitive_type="square",
+        use_bias=False
     ):
         """
         Core Atlasnet module : decoder to meshes and pointclouds.
@@ -94,12 +95,12 @@ class Atlasnet(nn.Module):
         self.hidden_neurons = 128
         self.num_layers = 2
 
-        self.linear1 = nn.Linear(self.input_size, self.hidden_neurons, bias=False)
+        self.linear1 = nn.Linear(self.input_size, self.hidden_neurons, bias=use_bias)
         init_weights(self.linear1)
 
         self.linear_list = nn.ModuleList(
             [
-                nn.Linear(self.hidden_neurons, self.hidden_neurons, bias=False)
+                nn.Linear(self.hidden_neurons, self.hidden_neurons, bias=use_bias)
                 for i in range(self.num_layers)
             ]
         )
@@ -107,7 +108,7 @@ class Atlasnet(nn.Module):
         for l in self.linear_list:
             init_weights(l)
 
-        self.last_linear = nn.Linear(self.hidden_neurons, self.dim_output, bias=False)
+        self.last_linear = nn.Linear(self.hidden_neurons, self.dim_output, bias=use_bias)
         init_weights(self.last_linear)
 
         if activation == "relu":

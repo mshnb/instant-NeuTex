@@ -30,7 +30,7 @@ loss_density_weight=-1
 # training
 batch_size=1
 
-lr=0.0001
+lr=0.001
 gpu_ids='0'
 
 checkpoints_dir='./checkpoints/'
@@ -46,7 +46,10 @@ train_and_test=1
 test_num=1
 
 print_freq=500
-test_freq=5000
+test_freq=2500
+
+loss_normal=1
+bias=0
 
 python3 train.py  \
         --name=$name  \
@@ -83,4 +86,6 @@ python3 train.py  \
         --test_freq=$test_freq  \
         --verbose  \
         --texture_decoder_width=64  \
-        --texture_decoder_depth=2,2
+        --texture_decoder_depth=2,2 \
+        --loss_normal=$loss_normal \
+        --bias=$bias

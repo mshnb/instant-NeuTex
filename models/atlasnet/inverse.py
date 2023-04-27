@@ -5,7 +5,7 @@ import numpy as np
 from ..networks import init_weights, init_seq
 
 class InverseAtlasnet(nn.Module):
-    def __init__(self, num_primitives, code_size, primitive_type):
+    def __init__(self, num_primitives, code_size, primitive_type, use_bias=False):
         super().__init__()
 
         if primitive_type == 'square':
@@ -17,12 +17,12 @@ class InverseAtlasnet(nn.Module):
         self.num_layers = 2
         self.hidden_neurons = 128
 
-        self.linear1 = nn.Linear(self.input_dim, self.hidden_neurons, bias=False)
+        self.linear1 = nn.Linear(self.input_dim, self.hidden_neurons, bias=use_bias)
         init_weights(self.linear1)
 
         self.linear_list = nn.ModuleList(
             [
-                nn.Linear(self.hidden_neurons, self.hidden_neurons, bias=False)
+                nn.Linear(self.hidden_neurons, self.hidden_neurons, bias=use_bias)
                 for i in range(self.num_layers)
             ]
         )
@@ -30,7 +30,7 @@ class InverseAtlasnet(nn.Module):
         for l in self.linear_list:
             init_weights(l)
 
-        self.last_linear = nn.Linear(self.hidden_neurons, self.output_dim, bias=False)
+        self.last_linear = nn.Linear(self.hidden_neurons, self.output_dim, bias=use_bias)
         init_weights(self.last_linear)
 
         self.activation = F.relu
