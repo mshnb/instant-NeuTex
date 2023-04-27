@@ -12,7 +12,7 @@ from .diff_render_func import (
 from .atlasnet import Atlasnet  # , chamfer_distance
 from .atlasnet.inverse import InverseAtlasnet
 
-from .texture.texture_mlp import TextureViewMlpMix
+from .texture.texture_mlp import TextureViewMlp
 from .embedding import LpEmbedding
 import numpy as np
 
@@ -53,12 +53,10 @@ class NerfAtlasNetwork(nn.Module):
 
         # other types are not part of the release
         assert opt.texture_decoder_type == "texture_view_mlp_mix"
-        self.net_texture = TextureViewMlpMix(
-            count=opt.primitive_count,
-            out_channels=3,
-            num_freqs=0,
-            view_freqs=5,
+        self.net_texture = TextureViewMlp(
             uv_dim=2 if self.opt.primitive_type == "square" else 3,
+            out_channels=3,
+            view_freqs=5,
             layers=[2, 2],
             width=64,
             clamp=False
@@ -74,11 +72,6 @@ class NerfAtlasNetwork(nn.Module):
         compute_inverse_mapping=False,
         compute_atlasnet_density=False,
     ):
-        zeros = torch.zeros(
-            camera_position.shape[0], dtype=torch.long, device=camera_position.device
-        )
-        geometry_embedding = self.net_geometry_embedding(zeros)
-
         output = {}
         orig_ray_pos, ray_dist, ray_valid, ray_ts = self.raygen(
             camera_position, ray_direction, self.opt.sample_num, jitter=0.05
@@ -88,7 +81,7 @@ class NerfAtlasNetwork(nn.Module):
         mlp_output = self.net_geometry_decoder(None, ray_pos)
 
         if compute_atlasnet:
-            point_array_2d, points_3d = self.net_atlasnet(geometry_embedding)
+            point_array_2d, points_3d = self.net_atlasnet(camera_position.device)
 
             output["points"] = points_3d.view(
                 points_3d.shape[0], -1, points_3d.shape[-1]
@@ -96,12 +89,11 @@ class NerfAtlasNetwork(nn.Module):
                 0, 2, 1
             )  # (N, 3, total_points)
 
-            output["points_2d_inverse"] = self.net_inverse_atlasnet(
-                geometry_embedding,
-                points_3d.view(points_3d.shape[0], -1, points_3d.shape[-1]),
-            )
-            output["gt_primitive"] = self.net_atlasnet.get_label(points_3d.device)[None]
-            output["gt_points_2d"] = torch.stack(point_array_2d, dim=1)[None]
+            # output["points_2d_inverse"] = self.net_inverse_atlasnet(
+            #     points_3d.view(points_3d.shape[0], -1, points_3d.shape[-1]),
+            # )
+            # output["gt_primitive"] = self.net_atlasnet.get_label(points_3d.device)[None]
+            # output["gt_points_2d"] = torch.stack(point_array_2d, dim=1)[None]
 
             if compute_atlasnet_density:
                 for param in self.net_geometry_decoder.parameters():
@@ -112,11 +104,9 @@ class NerfAtlasNetwork(nn.Module):
                 for param in self.net_geometry_decoder.parameters():
                     param.requires_grad_(True)
 
-        uv = self.net_inverse_atlasnet(geometry_embedding, ray_pos)
+        uv = self.net_inverse_atlasnet(ray_pos)
 
-        point_features = self.net_texture(
-            None, uv, ray_direction[:, :, None, :]
-        )
+        point_features = self.net_texture(uv, ray_direction[:, :, None, :])
         # point_features = torch.ones_like(point_features, device=point_features.device)
 
         points_inverse = None
@@ -146,17 +136,21 @@ class NerfAtlasNetwork(nn.Module):
             alpha_blend,
         )
         if background_color is not None:
-            ray_color += (
-                background_color[:, None, :] * background_blend_weight[:, :, None]
-            )
+            ray_color += (background_color[:, None, :] * background_blend_weight[:, :, None])
+
         ray_color = simple_tone_map(ray_color)
         output["color"] = ray_color
         output["transmittance"] = background_blend_weight
+        
+        mask = 1 - background_blend_weight > 1e-2
+        integrated_uv = (uv * blend_weight[..., None]).sum(dim=-2) * 0.5 + 0.5
+        integrated_uv[~mask] = 0
+        output['uv'] = torch.cat([integrated_uv, torch.zeros(*integrated_uv.shape[:-1], 1, device=uv.device)], dim=-1)
 
         if compute_inverse_mapping:
             output["points_original"] = ray_pos
             if points_inverse is None:
-                points_inverse = self.net_atlasnet.map(geometry_embedding, uv)
+                points_inverse = self.net_atlasnet.map(uv)
             output["points_inverse"] = points_inverse
             output["points_inverse_weights"] = blend_weight
 
@@ -351,6 +345,9 @@ class NerfAtlasRadianceModel(BaseModel):
             if "color" in self.output:
                 self.visual_names.append("ray_color")
                 self.ray_color = self.output["color"]
+            if "uv" in self.output:
+                self.visual_names.append("uv")
+                self.uv = self.output["uv"]
             if "foreground_blend_weight" in self.output:
                 self.visual_names.append("transmittance")
                 self.transmittance = self.output["foreground_blend_weight"][
@@ -430,8 +427,7 @@ class NerfAtlasRadianceModel(BaseModel):
             points = self.output["points_inverse"]
             pw = self.output["points_inverse_weights"]
 
-            dist = ((gt_points[..., None, :] - points) ** 2).sum(-1)
-            dist = dist.sum(-1)
+            dist = ((gt_points - points) ** 2).sum(-1)
             dist = (dist * pw).sum(-1)
             dist = dist.mean()
 
@@ -546,7 +542,7 @@ class NerfAtlasRadianceModel(BaseModel):
                 )
                 weights[0, :, :, tex] = 1
                 textures.append(
-                    self.net_nerf_atlas.module.net_texture(None, grid, weights)[0]
+                    self.net_nerf_atlas.module.net_texture(grid, weights)
                 )
             return grid.squeeze(), [t.squeeze() for t in textures]
 
@@ -597,8 +593,8 @@ class NerfAtlasRadianceModel(BaseModel):
 
                 textures.append(
                     self.net_nerf_atlas.module.net_texture(
-                        None, grid, viewdir, weights
-                    )[0]
+                        grid, viewdir, weights
+                    )
                 )
 
             return meshes, [t.squeeze() for t in textures]

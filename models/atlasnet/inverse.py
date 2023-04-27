@@ -4,24 +4,21 @@ import torch.nn.functional as F
 import numpy as np
 from ..networks import init_weights, init_seq
 
-
-class MappingManifold(nn.Module):
-    def __init__(self, code_size, input_dim, output_dim, hidden_size=128, num_layers=2):
-        """
-        template_size: input size
-        """
+class InverseAtlasnet(nn.Module):
+    def __init__(self, num_primitives, code_size, primitive_type):
         super().__init__()
-        self.code_size = code_size
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.hidden_neurons = hidden_size
-        self.num_layers = num_layers
 
-        self.linear1 = nn.Linear(self.input_dim, self.code_size)
-        self.linear2 = nn.Linear(self.code_size, self.hidden_neurons)
+        if primitive_type == 'square':
+            self.output_dim = 2
+        else:
+            self.output_dim = 3
 
+        self.input_dim = 3
+        self.num_layers = 2
+        self.hidden_neurons = 128
+
+        self.linear1 = nn.Linear(self.input_dim, self.hidden_neurons)
         init_weights(self.linear1)
-        init_weights(self.linear2)
 
         self.linear_list = nn.ModuleList(
             [
@@ -38,46 +35,20 @@ class MappingManifold(nn.Module):
 
         self.activation = F.relu
 
-    def forward(self, x, latent):
-
-        x = self.linear1(x) + latent[:, None]
-        x = self.activation(x)
-        x = self.activation(self.linear2(x))
-        for i in range(self.num_layers):
-            x = self.activation(self.linear_list[i](x))
-        return self.last_linear(x)
-
-
-class InverseAtlasnet(nn.Module):
-    def __init__(self, num_primitives, code_size, primitive_type):
-        super().__init__()
-
-        if primitive_type == 'square':
-            self.output_dim = 2
-        else:
-            self.output_dim = 3
-
-        self.encoders = nn.ModuleList(
-            [MappingManifold(code_size, 3, self.output_dim) for i in range(0, num_primitives)]
-        )
-
-    def forward(self, latent_vector, points):
+    def forward(self, x):
         """
         Args:
             points: :math:`(N,*,3)`
         """
-        input_shape = points.shape
-
-        points = points.view(points.shape[0], -1, 3)
-
-        output = [
-            encoder(points, latent_vector) for encoder in self.encoders
-        ]  # (N, *, 3)[primitives]
-        output = torch.stack(output, dim=-2)  # (N, *, primitives, 3)
-        output = output.view(input_shape[:-1] + output.shape[-2:])
+        x = self.linear1(x)
+        x = self.activation(x)
+        for i in range(self.num_layers):
+            x = self.activation(self.linear_list[i](x))
+        x = self.last_linear(x)
 
         if self.output_dim == 2:
-            uv = torch.tanh(output)
+            uv = torch.tanh(x)
         else:
-            uv = F.normalize(output, dim=-1)
+            uv = F.normalize(x, dim=-1)
+
         return uv

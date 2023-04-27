@@ -14,7 +14,6 @@ from utils.cube_map import (
 )
 from PIL import Image
 
-
 def logit(x):
     x = np.clip(x, 1e-5, 1 - 1e-5)
     return np.log(x / (1 - x))
@@ -23,141 +22,9 @@ def logit(x):
 def torch_logit(x):
     return torch.log(x / (1 - x + 1e-5))
 
-
-class TextureMlpMix(nn.Module):
-    def __init__(self, count, out_channels, num_freqs, uv_dim, layers, width):
-        super().__init__()
-        self.textures = nn.ModuleList(
-            [
-                TextureMlp(uv_dim, out_channels, num_freqs, layers=layers, width=width)
-                for _ in range(count)
-            ]
-        )
-
-    def forward(self, encoding, uvs, weights):
-        values = []
-        for uv, texture in zip(torch.unbind(uvs, dim=-2), self.textures):
-            values.append(texture(uv))
-        value = (torch.stack(values, dim=-2) * weights[..., None]).sum(-2)
-        return value
-
-
-class TextureMlp(nn.Module):
-    def __init__(self, uv_dim, out_channels, num_freqs, layers, width):
-        super().__init__()
-        self.uv_dim = uv_dim
-        self.num_freqs = max(num_freqs, 0)
-
-        self.channels = out_channels
-
-        block1 = []
-        block1.append(nn.Linear(uv_dim + 2 * uv_dim * self.num_freqs, width))
-        block1.append(nn.LeakyReLU(0.2))
-        for i in range(layers):
-            block1.append(nn.Linear(width, width))
-            block1.append(nn.LeakyReLU(0.2))
-        block1.append(nn.Linear(width, self.channels))
-        self.block1 = nn.Sequential(*block1)
-
-        init_seq(self.block1)
-        self.cubemap_ = None
-        self.specular_cubemap_ = None
-
-    def forward(self, uv):
-        """
-        Args:
-            uvs: :math:`(N,Rays,Samples,U)`
-            input_encoding: :math:`(N,E)`
-        """
-
-        if self.cubemap_ is None:
-            value = self.block1(
-                torch.cat([uv, positional_encoding(uv, self.num_freqs)], dim=-1)
-            )
-            return value
-        else:
-            value = self.block1(
-                torch.cat([uv, positional_encoding(uv, self.num_freqs)], dim=-1)
-            )
-            cubemap_color = sample_cubemap(self.cubemap_, uv)
-            if self.specular_cubemap_ is None:
-                return torch.cat(
-                    [cubemap_color[..., :3] ** 2.2, value[..., 3:]], dim=-1
-                )
-            else:
-                s_color = sample_cubemap(self.specular_cubemap_, uv)
-                value[..., 3][s_color[..., 0] > 0] = torch_logit(
-                    s_color[..., 1][s_color[..., 0] > 0]
-                )
-                value[..., 4][s_color[..., 0] > 0] = torch_logit(
-                    s_color[..., 2][s_color[..., 0] > 0]
-                )
-
-                return torch.cat(
-                    [cubemap_color[..., :3] ** 2.2, value[..., 3:]], dim=-1,
-                )
-
-    def _export_cube(self, resolution):
-        device = next(self.block1.parameters()).device
-
-        grid = torch.tensor(generate_grid(2, resolution)).float().to(device)
-        textures = []
-        for index in range(6):
-            xyz = convert_cube_uv_to_xyz(index, grid)
-            textures.append(self.forward(xyz))
-
-        return torch.stack(textures, dim=0)
-
-    def import_cubemap(self, filename, s2=None):
-        assert self.uv_dim == 3
-        device = next(self.block1.parameters()).device
-        cube = load_cube_from_single_texture(filename)
-        self.cubemap_ = torch.tensor(cube).float().to(device)
-
-        if s2 is not None:
-            device = next(self.block1.parameters()).device
-            cube = load_cube_from_single_texture(s2)
-            self.specular_cubemap_ = torch.tensor(cube).float().to(device)
-
-    def export_textures(self, resolution=512):
-        # only support sphere for now
-        if self.uv_dim == 3:
-            with torch.no_grad():
-                return self._export_cube(resolution)
-        else:
-            with torch.no_grad():
-                return self._export_square(resolution)
-
-
-class TextureViewMlpMix(nn.Module):
-    def __init__(self, count, out_channels, num_freqs, view_freqs, uv_dim, layers, width, clamp):
-        super().__init__()
-        self.textures = nn.ModuleList(
-            [
-                TextureViewMlp(
-                    uv_dim,
-                    out_channels,
-                    num_freqs,
-                    view_freqs,
-                    layers=layers,
-                    width=width,
-                    clamp=clamp
-                )
-                for _ in range(count)
-            ]
-        )
-
-    def forward(self, encoding, uvs, view_dir):
-        values = []
-        for uv, texture in zip(torch.unbind(uvs, dim=-2), self.textures):
-            values.append(texture(uv, view_dir))
-        value = torch.stack(values, dim=-2).sum(-2)
-        return value
-
-
 class TextureViewMlp(nn.Module):
     def __init__(
-            self, uv_dim, out_channels, num_freqs, view_freqs, layers, width, clamp
+            self, uv_dim, out_channels, view_freqs, layers, width, clamp
     ):
         super().__init__()
         self.uv_dim = uv_dim
@@ -194,13 +61,12 @@ class TextureViewMlp(nn.Module):
         self.cubemap_ = None
         self.clamp_texture = clamp
 
-    def forward(self, uv, view_dir):
+    def forward(self,uv, view_dir):
         """
         Args:
             uvs: :math:`(N,Rays,Samples,U)`
             view_dir: :math:`(N,Rays,Samples,3)`
         """
-
         h = self.uv_encoder(uv)
         diffuse = self.block1(h)
         if self.clamp_texture:

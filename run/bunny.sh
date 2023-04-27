@@ -15,7 +15,7 @@ geometry_embedding_dim=64
 # primitive_type='sphere'
 primitive_type='square'
 primitive_count=1
-points_per_primitive=2500
+points_per_primitive=2048
 texture_decoder_type='texture_view_mlp_mix'
 atlasnet_activation='relu'
 
@@ -31,13 +31,13 @@ loss_density_weight=-1
 batch_size=1
 
 lr=0.0001
-gpu_ids='1'
+gpu_ids='0'
 
 checkpoints_dir='./checkpoints/'
 resume_checkpoints_dir=$checkpoints_dir
 
-save_iter_freq=10000
-niter=200000
+save_iter_freq=100000
+niter=500000
 niter_decay=0
 
 n_threads=0

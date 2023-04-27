@@ -27,7 +27,7 @@ def test(model, dataset, visualizer, opt, test_steps):
     result = None
     for i, pos in enumerate(tqdm(dataset.campos)):
         viewdir = -pos / np.linalg.norm(pos)
-        texture = model.net_nerf_atlas.module.net_texture.textures[0].export_textures(512, viewdir)
+        texture = model.net_nerf_atlas.module.net_texture.export_textures(512, viewdir)
 
         if result is None:
             result = texture
