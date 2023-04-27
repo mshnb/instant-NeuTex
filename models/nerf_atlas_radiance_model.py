@@ -76,7 +76,7 @@ class NerfAtlasNetwork(nn.Module):
         background_color=None,
         compute_atlasnet=True,
         compute_inverse_mapping=False,
-        compute_atlasnet_density=False,
+        compute_atlasnet_density=False
     ):
         output = {}
         orig_ray_pos, ray_dist, ray_valid, ray_ts = self.raygen(
@@ -114,10 +114,6 @@ class NerfAtlasNetwork(nn.Module):
 
         outputs = self.net_texture(uv, ray_direction[:, :, None, :])
 
-        if self.pred_normal:
-            output['normal'] = outputs['normal']
-            output['sigma_grad'] = mlp_output["sigma_grad"]
-
         density = mlp_output["density"][..., None]
         radiance = outputs['color']
         bsdf = [density, radiance]
@@ -142,6 +138,7 @@ class NerfAtlasNetwork(nn.Module):
             radiance_render,
             alpha_blend,
         )
+
         if background_color is not None:
             ray_color += (background_color[:, None, :] * background_blend_weight[:, :, None])
 
@@ -153,6 +150,16 @@ class NerfAtlasNetwork(nn.Module):
         integrated_uv = (uv * blend_weight[..., None]).sum(dim=-2) * 0.5 + 0.5
         integrated_uv[~mask] = 0
         output['uv'] = torch.cat([integrated_uv, torch.zeros(*integrated_uv.shape[:-1], 1, device=uv.device)], dim=-1)
+
+        if self.pred_normal:
+            normal = outputs['normal']
+            output['normal'] = normal
+            output['sigma_grad'] = mlp_output["sigma_grad"]
+
+            integrated_normal = (normal.detach() * blend_weight[..., None]).sum(dim=-2)
+            integrated_normal = F.normalize(integrated_normal, dim=-1, eps=1e-6) * 0.5 + 0.5
+            integrated_normal[~mask] = 0
+            output['integrated_normal'] = integrated_normal
 
         if compute_inverse_mapping:
             output["points_original"] = ray_pos
@@ -372,6 +379,9 @@ class NerfAtlasRadianceModel(BaseModel):
             if "uv" in self.output:
                 self.visual_names.append("uv")
                 self.uv = self.output["uv"]
+            if "integrated_normal" in self.output:
+                self.visual_names.append("normal")
+                self.normal = self.output["integrated_normal"]
             if "foreground_blend_weight" in self.output:
                 self.visual_names.append("transmittance")
                 self.transmittance = self.output["foreground_blend_weight"][
@@ -482,8 +492,7 @@ class NerfAtlasRadianceModel(BaseModel):
 
             self.loss_normal = normal_loss.mean() + normal_reg_loss.mean()
             self.loss_total += self.opt.loss_normal * self.loss_normal
-            self.loss_names.append("loss_normal")  
-
+            self.loss_names.append("normal")  
 
     def backward(self):
         self.optimizer.zero_grad()

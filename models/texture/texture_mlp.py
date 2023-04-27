@@ -85,7 +85,7 @@ class TextureViewMlp(nn.Module):
         normal = None
         if self.block_normal is not None:
             normal = self.block_normal(h)
-            normal = F.normalize(h, dim=-1, eps=1e-6)
+            normal = F.normalize(normal, dim=-1, eps=1e-6)
 
         diffuse = self.block1(h)
         if self.clamp_texture:

@@ -86,17 +86,26 @@ class GeometryMlpDecoder(nn.Module):
         assert pts.shape[-1] == 3
         assert input_code is None or input_code.shape[0] == pts.shape[0]
 
-        self.output = self.block(pts)
+        if require_grad:
+            with torch.enable_grad():
+                pts = pts.clone()
+                pts.requires_grad_(True)
+                self.output = self.block(pts)
+        else:
+            self.output = self.block(pts)
 
         output = {}
         index = 0
         if "density" in self.requested_features:
-            sigma = self.output[..., 0]
             if require_grad:
-                scale = torch.full_like(sigma, 1e-4, requires_grad=False)
-                grad = torch.autograd.grad(sigma, pts, scale, retain_graph=True, create_graph=True, only_inputs=True)[0]
-                grad = -F.normalize(grad, dim=-1, eps=1e-6)
-                output["sigma_grad"] = grad
+                with torch.enable_grad():
+                    sigma = self.output[..., 0]
+                    unused = torch.empty_like(sigma, requires_grad=False)
+                    grad = torch.autograd.grad(sigma, pts, unused, retain_graph=True)[0]
+                    grad = -F.normalize(grad, dim=-1, eps=1e-6)
+                    output["sigma_grad"] = grad.detach().clone()
+            else:
+                sigma = self.output[..., 0]
 
             output["density"] = F.softplus(sigma)
             index += 1
