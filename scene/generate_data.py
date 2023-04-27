@@ -53,9 +53,7 @@ os.makedirs(output_path + '/data', exist_ok=True)
 
 backend_str = 'cuda_rgb' if args.gpu else 'scalar_rgb'
 
-radius = 3.5
-center = torch.asarray([0, 0.5, 0])
-
+radius = 2
 mutation = 0.1
 
 total_size = args.size + args.addition
@@ -69,8 +67,8 @@ for i in tqdm(range(args.size)):
     sinPhi = math.sqrt(1 - cosPhi * cosPhi)
 
     dist = radius + (random.random() * 2 - 1) * mutation
-    campos = center + torch.asarray([math.cos(theta) * sinPhi, cosPhi, math.sin(theta) * sinPhi]) * dist
-    camat = center + torch.rand(3) * mutation
+    campos = torch.asarray([math.cos(theta) * sinPhi, cosPhi, math.sin(theta) * sinPhi]) * dist
+    camat = torch.rand(3) * mutation
 
     campos_list[i] = campos
     camat_list[i] = camat
@@ -88,8 +86,8 @@ if args.addition > 0:
         sinPhi = math.sqrt(1 - cosPhi * cosPhi)
 
         dist = radius + (random.random() * 2 - 1) * mutation
-        campos = center + torch.asarray([math.cos(theta) * sinPhi, cosPhi, math.sin(theta) * sinPhi]) * dist
-        camat = center + torch.rand(3) * mutation
+        campos = torch.asarray([math.cos(theta) * sinPhi, cosPhi, math.sin(theta) * sinPhi]) * dist
+        camat = torch.rand(3) * mutation
 
         i += args.size
         campos_list[i] = campos
