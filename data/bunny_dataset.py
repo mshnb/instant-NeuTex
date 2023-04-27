@@ -70,7 +70,7 @@ class BunnyDataset(BaseDataset):
             "--use_test_data", type=int, default=-1, help="train or test dataset",
         )
         parser.add_argument(
-            "--test_views", type=str, default="0,2,32,46,66,69,80,95", help="held out views",
+            "--test_views", type=str, default="2,18,34,62,80,95,110,124", help="held out views",
         )
 
         return parser

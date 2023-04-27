@@ -1,9 +1,13 @@
 import os
+import os.path as osp
 import numpy as np
 import shutil
 import math
 import torch
 import random
+import glob
+os.environ['OPENCV_IO_ENABLE_OPENEXR'] = "1"
+import cv2
 from tqdm import tqdm
 from argparse import ArgumentParser
 
@@ -31,7 +35,7 @@ parser.add_argument('-i', '--input', type=str, default=r'./bunny/bunny.xml', hel
 parser.add_argument('-o', '--output', type=str, default=r'../run/bunny', help='output path of the dataset')
 parser.add_argument('--gpu', action='store_true', help='use mitsuba3\'s gpu backend')
 parser.add_argument('--clear', action='store_true', help='delete all prev data')
-parser.add_argument('--mi', type=str, default='../mitsuba', help='locate mitsuba')
+parser.add_argument('--mi', type=str, default='../../mitsuba3/build/mitsuba', help='locate mitsuba')
 args = parser.parse_args()
 
 mi = args.mi
@@ -96,6 +100,14 @@ if args.addition > 0:
         camat_str = ','.join([str(n) for n in camat.tolist()])
         rendering_cmd = f'{mi} -m {backend_str} -o {output_path}/data/{i:04d}.exr -Dcampos={campos_str} -Dcamat={camat_str} {input_path}'
         os.popen(rendering_cmd).read()
+
+img_list = glob.glob(osp.join(output_path, 'data', '[0-9]*.exr'))
+for img_path in tqdm(img_list):
+    img = torch.tensor(cv2.imread(img_path, cv2.IMREAD_UNCHANGED)).float()
+    alpha = img[..., [-1]] * 255.0
+    bgr = torch.pow(img[..., :-1], 1.0/2.2) * 255.0
+    cv2.imwrite(img_path.replace('.exr', '.png'), torch.cat([bgr, alpha], dim=-1).numpy())
+    os.remove(img_path)
 
 np.save(f'{output_path}/in_camOrgs.npy', campos_list.numpy())
 np.save(f'{output_path}/in_camAts.npy', camat_list.numpy())
