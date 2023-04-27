@@ -31,7 +31,7 @@ loss_density_weight=-1
 batch_size=1
 
 lr=0.001
-gpu_ids='0'
+gpu_ids="${2}"
 
 checkpoints_dir='./checkpoints/'
 resume_checkpoints_dir=$checkpoints_dir
