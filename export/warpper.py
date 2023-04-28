@@ -61,6 +61,7 @@ class Neutex():
         
         self.nets = self.model.get_subnetworks()
         self.device = device
+        self.uv_dim = 2 if opt.primitive_type == 'square' else 3
 
         os.chdir(prev)
 
@@ -102,11 +103,11 @@ class Neutex():
         dirs = dirs[mask, :]
 
         ray_resolution = samples_density.shape[-1]
-        samples_uv = torch.empty([ray_steps, ray_resolution, 2], device=self.device)
+        samples_uv = torch.empty([ray_steps, ray_resolution, self.uv_dim], device=self.device)
 
         T = torch.ones(ray_resolution, device=self.device)
         surface_w = torch.zeros(ray_resolution, device=self.device)
-        front_uv = torch.zeros([ray_resolution, 2], device=self.device)
+        front_uv = torch.zeros([ray_resolution, self.uv_dim], device=self.device)
 
         # fornt
         for step in range(ray_steps):
@@ -126,7 +127,7 @@ class Neutex():
 
         T = torch.ones(ray_resolution, device=self.device)
         surface_w = torch.zeros(ray_resolution, device=self.device)
-        back_uv = torch.zeros([ray_resolution, 2], device=self.device)
+        back_uv = torch.zeros([ray_resolution, self.uv_dim], device=self.device)
 
         # back
         for step in range(ray_steps-1, -1, -1):
@@ -202,7 +203,7 @@ class Neutex():
 
         T = torch.ones(ray_resolution, device=self.device)
         surface_w = torch.zeros(ray_resolution, device=self.device)
-        front_uv = torch.zeros([ray_resolution, 2], device=self.device)
+        front_uv = torch.zeros([ray_resolution, self.uv_dim], device=self.device)
         front_normal = torch.zeros([ray_resolution, 3], device=self.device)
         acc_density = torch.zeros(ray_resolution, device=self.device) 
 
@@ -238,6 +239,13 @@ class Neutex():
                 mutation=m
             )
 
+            if uv.shape[-1] == 3:
+                scale = 1 / math.pi
+                x, y, z = torch.split(uv, [1, 1, 1], dim=-1)
+                phi = torch.acos(y) * scale
+                theta = (torch.atan2(z, x) * scale + 1) * 0.5
+                uv = torch.cat([theta, phi], dim=-1)
+
             for i in range(uv.shape[0]):
                 pos_screen = uv[i] * tex_size
 
@@ -257,3 +265,36 @@ class Neutex():
         mask = normal_tex[..., -1] > 0
         normal_tex[mask] = (normal_tex[mask] + 1) * 0.5
         return normal_tex.cpu()
+
+    def trace_surface(self, ray_o, ray_d, t_min, t_max, steps=1024):
+        batch_size = ray_o.shape[0]
+        ray_o = ray_o + ray_d * t_min
+        dt = (t_max - t_min) / steps
+
+        T = torch.ones(batch_size, device=self.device)
+        surface_w = torch.zeros(batch_size, device=self.device)
+        front_uv = torch.zeros([batch_size, self.uv_dim], device=self.device)
+        front_normal = torch.zeros([batch_size, 3], device=self.device)
+        acc_density = torch.zeros(batch_size, device=self.device) 
+
+        # collect samples
+        for step in tqdm(range(steps)):
+            pos = ray_o + ray_d * dt * step
+
+            outputs = self.nets['nerf'](pos)
+            sigma = outputs['density'].squeeze()
+            normal = outputs['normal']
+
+            acc_density += sigma
+            alpha = 1.0 - torch.exp(-sigma * dt)
+            weight = alpha * T
+            T *= 1.0 - alpha
+
+            surface_i = weight > surface_w
+            surface_w[surface_i] = weight[surface_i]
+            front_uv[surface_i] = (self.nets['inverse_atlas'](pos[surface_i]) + 1.0) * 0.5
+            front_normal[surface_i] = normal[surface_i]
+        
+        # ignore rays which do not hit object surface
+        sample_valid = acc_density / steps > 1.0
+        return front_uv, front_normal, sample_valid

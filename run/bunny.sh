@@ -12,8 +12,8 @@ random_sample_size=64
 sample_num=128
 
 geometry_embedding_dim=64
-# primitive_type='sphere'
-primitive_type='square'
+primitive_type='sphere'
+# primitive_type='square'
 primitive_count=1
 points_per_primitive=2048
 texture_decoder_type='texture_view_mlp_mix'
@@ -36,7 +36,7 @@ gpu_ids="${2}"
 checkpoints_dir='./checkpoints/'
 resume_checkpoints_dir=$checkpoints_dir
 
-save_iter_freq=100000
+save_iter_freq=50000
 niter=500000
 niter_decay=0
 
@@ -49,12 +49,14 @@ print_freq=500
 test_freq=2500
 
 loss_normal=1
-bias=1
+bias=0
+scale_uv_weight=1
 
 python3 train.py  \
         --name=$name  \
         --loss_normal=$loss_normal  \
         --bias=$bias  \
+        --scale_uv_weight=$scale_uv_weight  \
         --loss_inverse_mapping_weight=$loss_inverse_mapping_weight  \
         --points_per_primitive=$points_per_primitive  \
         --model=$model  \

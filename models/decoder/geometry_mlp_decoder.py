@@ -25,7 +25,7 @@ class GeometryMlpDecoder(nn.Module):
         super().__init__()
 
         # real-time net should not use bias
-        use_bias = False
+        # use_bias = False
 
         # self.code_dim = code_dim
         # self.uv_dim = uv_dim
@@ -63,7 +63,8 @@ class GeometryMlpDecoder(nn.Module):
         self.normal_block = None
         if pred_normal:
             block3 = []
-            block3.append(nn.Linear(32, normal_hidden_size, bias=use_bias))
+            # block3.append(nn.Linear(32, normal_hidden_size, bias=use_bias))
+            block3.append(nn.Linear(3, normal_hidden_size, bias=use_bias))
             block3.append(nn.ReLU())
             for i in range(2):
                 block3.append(nn.Linear(normal_hidden_size, normal_hidden_size, bias=use_bias))
@@ -113,7 +114,8 @@ class GeometryMlpDecoder(nn.Module):
         #     output["uv_weights"] = F.softmax(output["uv_weights_logits"], dim=-1)
         #     index += self.uv_count
         if self.normal_block is not None:
-            normal = self.normal_block(h)
+            # normal = self.normal_block(h)
+            normal = self.normal_block(pts)
             output["normal"] = F.normalize(normal, dim=-1, eps=1e-6)
             # index += 3
         # if "frame" in self.requested_features:

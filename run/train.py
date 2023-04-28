@@ -84,6 +84,9 @@ def test(model, dataset, visualizer, opt, test_steps):
                         visuals[key][start:end] = chunk
                     else:
                         assert len(chunk.shape) == 3
+                        # if chunk.shape[-1] != 3:
+                        #     print(key)
+                        #     print(chunk.shape)
                         assert chunk.shape[-1] == 3
                         visuals[key] = np.zeros((height * width, 3)).astype(chunk.dtype)
                         visuals[key][start:end, :] = chunk
@@ -178,7 +181,9 @@ def main():
             model.set_input(data)
             model.set_current_step(total_steps)
             model.optimize_parameters()
-            model.update_learning_rate(verbose=total_steps % opt.print_freq == 0)
+
+            if total_steps % opt.print_freq == 0:
+                model.update_learning_rate(verbose=True)
 
             losses = model.get_current_losses()
             visualizer.accumulate_losses(losses)

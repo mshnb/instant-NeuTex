@@ -31,7 +31,7 @@ class NerfAtlasNetwork(nn.Module):
             uv_count=0,
             brdf_dim=3,
             hidden_size=64,
-            normal_hidden_size=64,
+            normal_hidden_size=128,
             num_layers=1,
             pred_normal=self.pred_normal,
             use_bias=self.use_bias
@@ -50,7 +50,8 @@ class NerfAtlasNetwork(nn.Module):
             opt.primitive_count,
             self.opt.geometry_embedding_dim,
             self.opt.primitive_type,
-            use_bias=self.use_bias
+            use_bias=self.use_bias,
+            scale_uv_weight=opt.scale_uv_weight
         )
 
         # other types are not part of the release
@@ -137,7 +138,7 @@ class NerfAtlasNetwork(nn.Module):
         )
 
         if background_color is not None:
-            ray_color += (background_color[:, None, :] * background_blend_weight[:, :, None])
+            ray_color = ray_color + (background_color[:, None, :] * background_blend_weight[:, :, None])
 
         ray_color = simple_tone_map(ray_color)
         output["color"] = ray_color
@@ -146,7 +147,9 @@ class NerfAtlasNetwork(nn.Module):
         mask = 1 - background_blend_weight > 1e-2
         integrated_uv = (uv * blend_weight[..., None]).sum(dim=-2) * 0.5 + 0.5
         integrated_uv[~mask] = 0
-        output['uv'] = torch.cat([integrated_uv, torch.zeros(*integrated_uv.shape[:-1], 1, device=uv.device)], dim=-1)
+        if self.opt.primitive_type == 'square':
+            integrated_uv = torch.cat([integrated_uv, torch.zeros(*integrated_uv.shape[:-1], 1, device=uv.device)], dim=-1)
+        output['uv'] = integrated_uv
 
         if self.pred_normal:
             # normal = outputs['normal']
@@ -285,6 +288,14 @@ class NerfAtlasRadianceModel(BaseModel):
         )
 
         parser.add_argument(
+            "--scale_uv_weight",
+            required=False,
+            default=1.0,
+            type=float,
+            help="scale_uv_weight at the last layer",
+        )
+
+        parser.add_argument(
             "--primitive_type",
             type=str,
             choices=["square", "sphere"],
@@ -393,7 +404,7 @@ class NerfAtlasRadianceModel(BaseModel):
 
         if self.opt.loss_color_weight > 0:
             self.loss_color = F.mse_loss(self.output["color"], self.input["gt_image"])
-            self.loss_total += self.opt.loss_color_weight * self.loss_color
+            self.loss_total = self.loss_total + self.opt.loss_color_weight * self.loss_color
             self.loss_names.append("color")
 
         if self.opt.loss_bg_weight > 0:
@@ -403,7 +414,7 @@ class NerfAtlasRadianceModel(BaseModel):
                 )
             else:
                 self.loss_bg = 0
-            self.loss_total += self.opt.loss_bg_weight * self.loss_bg
+            self.loss_total = self.loss_total + self.opt.loss_bg_weight * self.loss_bg
             self.loss_names.append("bg")
 
         if self.opt.loss_chamfer_weight > 0:
@@ -416,14 +427,14 @@ class NerfAtlasRadianceModel(BaseModel):
                     self.output["points"], self.input["point_cloud"].permute(0, 2, 1)
                 )
             self.loss_chamfer = torch.mean(dist1) + torch.mean(dist2)
-            self.loss_total += self.opt.loss_chamfer_weight * self.loss_chamfer
+            self.loss_total = self.loss_total + self.opt.loss_chamfer_weight * self.loss_chamfer
             self.loss_names.append("chamfer")
 
         if self.opt.loss_origin_weight > 0:
             self.loss_origin = (
                 ((self.output["points"] ** 2).sum(-2) - 1).clamp(min=0).sum()
             )
-            self.loss_total += self.opt.loss_origin_weight * self.loss_origin
+            self.loss_total = self.loss_total + self.opt.loss_origin_weight * self.loss_origin
             self.loss_names.append("origin")
 
         if self.opt.loss_inverse_uv_weight > 0:
@@ -438,7 +449,7 @@ class NerfAtlasRadianceModel(BaseModel):
                 inverse_points_2d,
                 self.output["gt_points_2d"].expand_as(inverse_points_2d),
             )
-            self.loss_total += self.opt.loss_inverse_uv_weight * self.loss_inverse_uv
+            self.loss_total = self.loss_total + self.opt.loss_inverse_uv_weight * self.loss_inverse_uv
             self.loss_names.append("inverse_uv")
 
         if self.opt.loss_inverse_selection_weight > 0:
@@ -449,7 +460,7 @@ class NerfAtlasRadianceModel(BaseModel):
             self.loss_inverse_selection = F.cross_entropy(
                 weights_inverse_logits.permute(0, 2, 1), gt_weights
             )
-            self.loss_total += (
+            self.loss_total = self.loss_total + (
                 self.opt.loss_inverse_selection_weight * self.loss_inverse_selection
             )
             self.loss_names.append("inverse_selection")
@@ -464,7 +475,7 @@ class NerfAtlasRadianceModel(BaseModel):
             dist = dist.mean()
 
             self.loss_inverse_mapping = dist
-            self.loss_total += (
+            self.loss_total = self.loss_total + (
                 self.opt.loss_inverse_mapping_weight * self.loss_inverse_mapping
             )
             self.loss_names.append("inverse_mapping")
@@ -473,7 +484,7 @@ class NerfAtlasRadianceModel(BaseModel):
             self.loss_density = (
                 (1 - self.output["points_density"] / 20).clamp(min=0).mean()
             )
-            self.loss_total += self.opt.loss_density_weight * self.loss_density
+            self.loss_total = self.loss_total + self.opt.loss_density_weight * self.loss_density
             self.loss_names.append("density")
 
         if self.opt.loss_normal > 0:
@@ -489,7 +500,7 @@ class NerfAtlasRadianceModel(BaseModel):
             normal_reg_loss = (w * normal_reg_loss).sum(-1)
 
             self.loss_normal = normal_loss.mean() + normal_reg_loss.mean()
-            self.loss_total += self.opt.loss_normal * self.loss_normal
+            self.loss_total = self.loss_total + self.opt.loss_normal * self.loss_normal
             self.loss_names.append("normal")  
 
     def backward(self):
