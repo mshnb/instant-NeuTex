@@ -2,13 +2,12 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-from ..networks import init_seq, positional_encoding
+from ..networks import init_seq
 
 from gridencoder import GridEncoder
 
-
 class GeometryMlpDecoder(nn.Module):
-    VALID_FEATURES = {"density", "normal", "frame", "uv", "uv_weights", "brdf"}
+    # VALID_FEATURES = {"density", "normal", "frame", "uv", "uv_weights", "brdf"}
 
     def __init__(
         self,
@@ -18,11 +17,15 @@ class GeometryMlpDecoder(nn.Module):
         uv_count,
         brdf_dim,
         hidden_size,
+        normal_hidden_size,
         num_layers,
         pred_normal=False,
         use_bias=False
     ):
         super().__init__()
+
+        # real-time net should not use bias
+        use_bias = False
 
         # self.code_dim = code_dim
         # self.uv_dim = uv_dim
@@ -60,16 +63,16 @@ class GeometryMlpDecoder(nn.Module):
         self.normal_block = None
         if pred_normal:
             block3 = []
-            block3.append(nn.Linear(32, hidden_size, bias=use_bias))
+            block3.append(nn.Linear(32, normal_hidden_size, bias=use_bias))
             block3.append(nn.ReLU())
             for i in range(2):
-                block3.append(nn.Linear(hidden_size, hidden_size, bias=use_bias))
+                block3.append(nn.Linear(normal_hidden_size, normal_hidden_size, bias=use_bias))
                 block3.append(nn.ReLU())
-            block3.append(nn.Linear(hidden_size, 3, bias=use_bias))
+            block3.append(nn.Linear(normal_hidden_size, 3, bias=use_bias))
             self.normal_block = nn.Sequential(*block3)
             init_seq(self.normal_block)
 
-    def forward(self, input_code, pts, require_grad=False):
+    def forward(self, pts, require_grad=False):
         """
         Args:
             input_code: :math:`(N,E)`

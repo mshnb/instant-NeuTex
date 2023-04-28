@@ -31,6 +31,7 @@ class NerfAtlasNetwork(nn.Module):
             uv_count=0,
             brdf_dim=3,
             hidden_size=64,
+            normal_hidden_size=64,
             num_layers=1,
             pred_normal=self.pred_normal,
             use_bias=self.use_bias
@@ -80,7 +81,7 @@ class NerfAtlasNetwork(nn.Module):
         )
         ray_pos = orig_ray_pos  # (N, rays, samples, 3)
 
-        mlp_output = self.net_geometry_decoder(None, ray_pos, require_grad=self.pred_normal)
+        mlp_output = self.net_geometry_decoder(ray_pos, require_grad=self.pred_normal)
 
         if compute_atlasnet:
             point_array_2d, points_3d = self.net_atlasnet(camera_position.device)
@@ -101,7 +102,7 @@ class NerfAtlasNetwork(nn.Module):
                 for param in self.net_geometry_decoder.parameters():
                     param.requires_grad_(False)
                 output["points_density"] = self.net_geometry_decoder(
-                    None, points_3d.view(points_3d.shape[0], -1, 1, 3)
+                    points_3d.view(points_3d.shape[0], -1, 1, 3)
                 )["density"]
                 for param in self.net_geometry_decoder.parameters():
                     param.requires_grad_(True)

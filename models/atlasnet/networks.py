@@ -92,8 +92,8 @@ class Atlasnet(nn.Module):
         # Intialize deformation networks
         self.input_size = self.input_point_dim
         self.dim_output = 3
-        self.hidden_neurons = 128
         self.num_layers = 2
+        self.hidden_neurons = 128
 
         self.linear1 = nn.Linear(self.input_size, self.hidden_neurons, bias=use_bias)
         init_weights(self.linear1)

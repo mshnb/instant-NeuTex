@@ -134,7 +134,7 @@ class BaseModel:
 
             if not os.path.isfile(load_path):
                 print("cannot load", load_path)
-                continue
+                exit()
 
             state_dict = torch.load(load_path, map_location=self.device)
             if isinstance(net, nn.DataParallel):
@@ -167,7 +167,7 @@ class BaseModel:
 
             if not os.path.isfile(load_path):
                 print("cannot load", load_path)
-                continue
+                exit()
 
             state_dict = torch.load(load_path, map_location=self.device)
             if isinstance(net, nn.DataParallel):

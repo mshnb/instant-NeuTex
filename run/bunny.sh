@@ -49,12 +49,13 @@ print_freq=500
 test_freq=2500
 
 loss_normal=1
-bias=0
+bias=1
 
 python3 train.py  \
         --name=$name  \
         --loss_normal=$loss_normal  \
         --bias=$bias  \
+        --loss_inverse_mapping_weight=$loss_inverse_mapping_weight  \
         --points_per_primitive=$points_per_primitive  \
         --model=$model  \
         --dataset_name=$dataset_name  \
@@ -72,7 +73,6 @@ python3 train.py  \
         --loss_chamfer_weight=$loss_chamfer_weight  \
         --loss_inverse_uv_weight=$loss_inverse_uv_weight  \
         --loss_inverse_selection_weight=$loss_inverse_selection_weight  \
-        --loss_inverse_mapping_weight=$loss_inverse_mapping_weight  \
         --loss_density_weight=$loss_density_weight  \
         --batch_size=$batch_size  \
         --lr=$lr  \

@@ -8,6 +8,9 @@ class InverseAtlasnet(nn.Module):
     def __init__(self, num_primitives, code_size, primitive_type, use_bias=False):
         super().__init__()
 
+        # real-time net should not use bias
+        use_bias = False
+
         if primitive_type == 'square':
             self.output_dim = 2
         else:

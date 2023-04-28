@@ -4,6 +4,8 @@ import numpy as np
 import torch.nn.functional as F
 from gridencoder import GridEncoder
 from shencoder import SHEncoder
+from freqencoder import FreqEncoder
+
 from ..networks import init_seq, positional_encoding
 from utils.grid import generate_grid
 from utils.cube_map import (
@@ -38,20 +40,21 @@ class TextureViewMlp(nn.Module):
             base_resolution=16, desired_resolution=2048
         )
 
-        block1 = []
-        block1.append(nn.Linear(32, width, bias=use_bias))
-        block1.append(nn.ReLU())
-        for i in range(layers[0]):
-            block1.append(nn.Linear(width, width, bias=use_bias))
-            block1.append(nn.ReLU())
-        block1.append(nn.Linear(width, self.channels, bias=use_bias))
-        self.block1 = nn.Sequential(*block1)
-        init_seq(self.block1)
+        # block1 = []
+        # block1.append(nn.Linear(32, width, bias=use_bias))
+        # block1.append(nn.ReLU())
+        # for i in range(layers[0]):
+        #     block1.append(nn.Linear(width, width, bias=use_bias))
+        #     block1.append(nn.ReLU())
+        # block1.append(nn.Linear(width, self.channels, bias=use_bias))
+        # self.block1 = nn.Sequential(*block1)
+        # init_seq(self.block1)
 
-        self.dir_encoder = SHEncoder(input_dim=3, degree=4)
+        # self.dir_encoder = SHEncoder(input_dim=3, degree=4)
+        self.dir_encoder = FreqEncoder(input_dim=3, degree=4)
 
         block2 = []
-        block2.append(nn.Linear(32 + 16, width, bias=use_bias))
+        block2.append(nn.Linear(self.uv_encoder.output_dim + self.dir_encoder.output_dim, width, bias=use_bias))
         block2.append(nn.ReLU())
         for i in range(layers[1]):
             block2.append(nn.Linear(width, width, bias=use_bias))
@@ -89,15 +92,16 @@ class TextureViewMlp(nn.Module):
         #     normal = self.block_normal(h)
         #     normal = F.normalize(normal, dim=-1, eps=1e-6)
 
-        diffuse = self.block1(h)
-        if self.clamp_texture:
-            diffuse = torch.sigmoid(diffuse)
-        else:
-            diffuse = F.softplus(diffuse)
+        # diffuse = self.block1(h)
+        # if self.clamp_texture:
+        #     diffuse = torch.sigmoid(diffuse)
+        # else:
+        #     diffuse = F.softplus(diffuse)
 
-        view_dir = view_dir.expand(diffuse.shape[:-1] + (view_dir.shape[-1],))
+        view_dir = view_dir.expand(uv.shape[:-1] + (view_dir.shape[-1],))
         # vp = positional_encoding(view_dir, self.view_freqs)
         vp = self.dir_encoder(view_dir)
+
         h = torch.cat([h, vp], dim=-1)
         specular = self.block2(h)
         if self.clamp_texture:
@@ -106,7 +110,8 @@ class TextureViewMlp(nn.Module):
             specular = F.softplus(specular)
 
         return {
-            'color': diffuse + specular, 
+            'color': specular, 
+            # 'color': diffuse + specular, 
             # 'normal': normal
         }
 
@@ -131,7 +136,7 @@ class TextureViewMlp(nn.Module):
 
     def _export_sphere(self, resolution, viewdir):
         with torch.no_grad():
-            device = next(self.block1.parameters()).device
+            device = next(self.block2.parameters()).device
 
             grid = np.stack(
                 np.meshgrid(
@@ -161,7 +166,7 @@ class TextureViewMlp(nn.Module):
 
     def _export_square(self, resolution, viewdir):
         with torch.no_grad():
-            device = next(self.block1.parameters()).device
+            device = next(self.block2.parameters()).device
 
             grid = torch.tensor(generate_grid(2, resolution)).float().to(device)
 
