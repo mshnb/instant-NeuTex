@@ -106,7 +106,7 @@ class Neutex():
         samples_uv = torch.empty([ray_steps, ray_resolution, self.uv_dim], device=self.device)
 
         T = torch.ones(ray_resolution, device=self.device)
-        surface_w = torch.zeros(ray_resolution, device=self.device)
+        # surface_w = torch.zeros(ray_resolution, device=self.device)
         front_uv = torch.zeros([ray_resolution, self.uv_dim], device=self.device)
 
         # fornt
@@ -119,14 +119,16 @@ class Neutex():
             T *= 1.0 - alpha
 
             # ray_resolution, 2
-            samples_uv[step] = self.nets['inverse_atlas'](pos)
+            # samples_uv[step] = self.nets['inverse_atlas'](pos)
+            # surface_i = weight > surface_w
+            # surface_w[surface_i] = weight[surface_i]
+            # front_uv[surface_i] = samples_uv[step][surface_i]
 
-            surface_i = weight > surface_w
-            surface_w[surface_i] = weight[surface_i]
-            front_uv[surface_i] = samples_uv[step][surface_i]
+            samples_uv[step] = self.nets['inverse_atlas'](pos)
+            front_uv += weight[..., None] * samples_uv[step]
 
         T = torch.ones(ray_resolution, device=self.device)
-        surface_w = torch.zeros(ray_resolution, device=self.device)
+        # surface_w = torch.zeros(ray_resolution, device=self.device)
         back_uv = torch.zeros([ray_resolution, self.uv_dim], device=self.device)
 
         # back
@@ -138,11 +140,13 @@ class Neutex():
             weight = alpha * T
             T *= 1.0 - alpha
 
-            surface_i = weight > surface_w
-            surface_w[surface_i] = weight[surface_i]
-            back_uv[surface_i] = samples_uv[step][surface_i]
+            # surface_i = weight > surface_w
+            # surface_w[surface_i] = weight[surface_i]
+            # back_uv[surface_i] = samples_uv[step][surface_i]
+
+            back_uv += weight[..., None] * samples_uv[step]
         
-        return front_uv, back_uv, dirs
+        return F.normalize(front_uv, dim=-1, eps=1e-6), F.normalize(back_uv, dim=-1, eps=1e-6), dirs
 
     def generate_data(self, batch_size, ray_steps):
         with torch.no_grad():
@@ -202,7 +206,7 @@ class Neutex():
         dt = 2 / ray_steps
 
         T = torch.ones(ray_resolution, device=self.device)
-        surface_w = torch.zeros(ray_resolution, device=self.device)
+        # surface_w = torch.zeros(ray_resolution, device=self.device)
         front_uv = torch.zeros([ray_resolution, self.uv_dim], device=self.device)
         front_normal = torch.zeros([ray_resolution, 3], device=self.device)
         acc_density = torch.zeros(ray_resolution, device=self.device) 
@@ -219,15 +223,30 @@ class Neutex():
             weight = alpha * T
             T *= 1.0 - alpha
 
-            surface_i = weight > surface_w
-            surface_w[surface_i] = weight[surface_i]
+            # surface_i = weight > surface_w
+            # surface_w[surface_i] = weight[surface_i]
+            # front_uv[surface_i] = self.nets['inverse_atlas'](pos[surface_i])
+            # front_normal[surface_i] = outputs['normal'][surface_i]
 
-            front_uv[surface_i] = (self.nets['inverse_atlas'](pos[surface_i]) + 1.0) * 0.5
-            front_normal[surface_i] = outputs['normal'][surface_i]
+            front_uv += weight[..., None] * self.nets['inverse_atlas'](pos)
+            front_normal += weight[..., None] * outputs['normal']
         
         # ignore rays which do not hit object surface
         mask = acc_density / ray_steps > 1.0
-        return front_uv[mask], front_normal[mask] 
+        return front_uv[mask], F.normalize(front_normal[mask], dim=-1, eps=1e-6) 
+
+    # [-1, 1] to [0, 1]
+    def normalize_normal(self, uv):
+        if uv.shape[-1] == 3:
+            scale = 1 / math.pi
+            x, y, z = torch.split(uv, [1, 1, 1], dim=-1)
+            phi = torch.acos(y) * scale
+            theta = (torch.atan2(z, x) * scale + 1) * 0.5
+            uv = torch.cat([theta, phi], dim=-1)
+        else:
+            uv = (uv + 1.0) * 0.5
+        
+        return uv
 
     def generate_normal_tex(self, tex_size, mutate_steps):
         normal_tex = torch.zeros(tex_size, tex_size, 4, device=self.device)
@@ -235,16 +254,11 @@ class Neutex():
         for m in tqdm(torch.linspace(0, 2, steps=mutate_steps)):
             uv, normal = self.extract_normal(
                 ray_resolution=2**13,
-                ray_steps=512,
+                ray_steps=1024,
                 mutation=m
             )
 
-            if uv.shape[-1] == 3:
-                scale = 1 / math.pi
-                x, y, z = torch.split(uv, [1, 1, 1], dim=-1)
-                phi = torch.acos(y) * scale
-                theta = (torch.atan2(z, x) * scale + 1) * 0.5
-                uv = torch.cat([theta, phi], dim=-1)
+            uv = self.normalize_normal(uv)
 
             for i in range(uv.shape[0]):
                 pos_screen = uv[i] * tex_size
@@ -275,6 +289,7 @@ class Neutex():
         surface_w = torch.zeros(batch_size, device=self.device)
         front_uv = torch.zeros([batch_size, self.uv_dim], device=self.device)
         front_normal = torch.zeros([batch_size, 3], device=self.device)
+        integrated_normal = torch.zeros([batch_size, 3], device=self.device)
         acc_density = torch.zeros(batch_size, device=self.device) 
 
         # collect samples
@@ -292,9 +307,56 @@ class Neutex():
 
             surface_i = weight > surface_w
             surface_w[surface_i] = weight[surface_i]
-            front_uv[surface_i] = (self.nets['inverse_atlas'](pos[surface_i]) + 1.0) * 0.5
+            front_uv[surface_i] = self.nets['inverse_atlas'](pos[surface_i])
             front_normal[surface_i] = normal[surface_i]
-        
+
+            integrated_normal += weight[..., None] * normal
+
+        integrated_normal = F.normalize(integrated_normal, dim=-1, eps=1e-6)
         # ignore rays which do not hit object surface
         sample_valid = acc_density / steps > 1.0
-        return front_uv, front_normal, sample_valid
+        return front_uv, front_normal, sample_valid, integrated_normal
+
+    def generate_normal_tex_by_sampling(self, tex_size, jitter=16):
+        flat_size = tex_size * tex_size
+        alpha = torch.zeros(flat_size, 1, device=self.device)
+        normal_tex = torch.zeros(flat_size, 3, device=self.device)
+
+        scale = 1 / tex_size
+        base = torch.arange(0, tex_size, device=self.device).float()
+        for j in tqdm(range(jitter)):
+            samples_x = (base + torch.rand_like(base)) * scale
+            samples_y = (base + torch.rand_like(base)) * scale
+            samples = torch.stack(torch.meshgrid(samples_x, samples_y, indexing='xy'), dim=-1)
+            samples = samples.view(-1, 2)
+
+            if self.uv_dim == 3:
+                theta, phi = torch.split(math.pi * samples, [1, 1], dim=-1)
+                theta = 2 * theta - math.pi
+
+                o_r = torch.sin(phi)
+                o_y = torch.cos(phi)
+                o_x = o_r * torch.cos(theta)
+                o_z = o_r * torch.sin(theta)
+
+                samples = torch.cat([o_x, o_y, o_z], dim=-1)    
+
+            #uv2pos
+            pos = self.nets['atlas'].map(samples)
+            #pos2normal
+            outputs = self.nets['nerf'](pos)
+            sigma = outputs['density'].squeeze()
+            normal = outputs['normal']
+
+            mask = sigma > 1e-4
+            normal_tex[mask] += normal[mask]
+            alpha[mask] += 1
+        
+        mask = alpha.squeeze() > 0
+        alpha[mask] = 1.0 / alpha[mask]
+        normal_tex *= alpha
+        alpha[mask] = 1
+
+        normal_tex[mask] = (F.normalize(normal_tex[mask], dim=-1, eps=1e-6) + 1) * 0.5
+        normal_tex = torch.cat([normal_tex, alpha], dim=-1)
+        return normal_tex.view(tex_size, tex_size, 4).cpu()

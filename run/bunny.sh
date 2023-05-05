@@ -52,10 +52,13 @@ loss_normal=1
 bias=0
 scale_uv_weight=1
 
+seed=1337
+
 python3 train.py  \
         --name=$name  \
         --loss_normal=$loss_normal  \
         --bias=$bias  \
+        --seed=$seed  \
         --scale_uv_weight=$scale_uv_weight  \
         --loss_inverse_mapping_weight=$loss_inverse_mapping_weight  \
         --points_per_primitive=$points_per_primitive  \
