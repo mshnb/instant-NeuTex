@@ -9,6 +9,7 @@
 	<default name="camat" value="0, 0, 0" />
 	<integrator type="$integrator">
 		<integer name="max_depth" value="$max_depth" />
+		<boolean name="hide_emitters" value="true" />
 	</integrator>
 	<sensor type="perspective">
 		<float name="fov" value="40" />
@@ -38,7 +39,7 @@
 		</transform>
 		<ref id="angel_bsdf" />
 	</shape>
-	<emitter type="point">
+	<!-- <emitter type="point">
 	    <point name="position" value="1, 1, 1"/>
 	    <rgb name="intensity" value="$intensity"/>
 	</emitter>
@@ -69,5 +70,8 @@
 	<emitter type="point">
 	    <point name="position" value="-1, -1, -1"/>
 	    <rgb name="intensity" value="$intensity"/>
+	</emitter> -->
+	<emitter type="constant">
+		<rgb name="radiance" value="1.0"/>
 	</emitter>
 </scene>

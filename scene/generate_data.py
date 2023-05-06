@@ -106,6 +106,7 @@ for img_path in tqdm(img_list):
     img = torch.tensor(cv2.imread(img_path, cv2.IMREAD_UNCHANGED)).float()
     alpha = img[..., [-1]] * 255.0
     bgr = torch.pow(img[..., :-1], 1.0/2.2) * 255.0
+
     cv2.imwrite(img_path.replace('.exr', '.png'), torch.cat([bgr, alpha], dim=-1).numpy())
     os.remove(img_path)
 
