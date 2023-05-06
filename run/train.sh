@@ -1,20 +1,25 @@
 #!/bin/bash
 [ -z $1 ] && exit 1
 
-name="${1}"
+# dataset name device
+dataset="${1}"
+name="${2}"
+gpu_ids="${3}"
+
 model='nerf_atlas_radiance'
 
-dataset_name='bunny'
-data_root="bunny"
+dataset_name='custom'
+data_root=$dataset
 
 random_sample='balanced'
-random_sample_size=48
-sample_num=256
+random_sample_size=64
+sample_num=128
 
 geometry_embedding_dim=64
 primitive_type='sphere'
+# primitive_type='square'
 primitive_count=1
-points_per_primitive=2500
+points_per_primitive=2048
 texture_decoder_type='texture_view_mlp_mix'
 atlasnet_activation='relu'
 
@@ -29,25 +34,37 @@ loss_density_weight=-1
 # training
 batch_size=1
 
-lr=0.0001
-gpu_ids='0'
+lr=0.001
 
 checkpoints_dir='./checkpoints/'
-resume_checkpoints_dir='./checkpoints'
+resume_checkpoints_dir=$checkpoints_dir
 
-save_iter_freq=1000
-niter=1000000
+save_iter_freq=50000
+niter=500000
 niter_decay=0
 
-n_threads=2
+n_threads=0
 
 train_and_test=1
 test_num=1
-print_freq=5
-test_freq=20
 
-python3 visualize_nerf_atlas_radiance.py  \
+print_freq=500
+test_freq=2500
+
+loss_normal=1
+bias=1
+scale_uv_weight=1
+
+seed=1337
+
+python3 train.py  \
         --name=$name  \
+        --loss_normal=$loss_normal  \
+        --bias=$bias  \
+        --seed=$seed  \
+        --scale_uv_weight=$scale_uv_weight  \
+        --loss_inverse_mapping_weight=$loss_inverse_mapping_weight  \
+        --points_per_primitive=$points_per_primitive  \
         --model=$model  \
         --dataset_name=$dataset_name  \
         --data_root=$data_root  \
@@ -57,7 +74,6 @@ python3 visualize_nerf_atlas_radiance.py  \
         --geometry_embedding_dim=$geometry_embedding_dim  \
         --primitive_type=$primitive_type  \
         --primitive_count=$primitive_count  \
-        --points_per_primitive=$points_per_primitive  \
         --texture_decoder_type=$texture_decoder_type  \
         --atlasnet_activation=$atlasnet_activation  \
         --loss_color_weight=$loss_color_weight  \
@@ -65,7 +81,6 @@ python3 visualize_nerf_atlas_radiance.py  \
         --loss_chamfer_weight=$loss_chamfer_weight  \
         --loss_inverse_uv_weight=$loss_inverse_uv_weight  \
         --loss_inverse_selection_weight=$loss_inverse_selection_weight  \
-        --loss_inverse_mapping_weight=$loss_inverse_mapping_weight  \
         --loss_density_weight=$loss_density_weight  \
         --batch_size=$batch_size  \
         --lr=$lr  \
@@ -80,6 +95,6 @@ python3 visualize_nerf_atlas_radiance.py  \
         --print_freq=$print_freq  \
         --test_freq=$test_freq  \
         --verbose  \
-        --texture_decoder_width=256  \
-        --texture_decoder_depth=5,3  \
-        --resume_dir=$resume_checkpoints_dir/${1}
+        --texture_decoder_width=64  \
+        --texture_decoder_depth=2,2
+

@@ -50,7 +50,7 @@ def get_rays_dir(pixelcoords, height, width, rot, sample_to_camera):
 
     return dirs
 
-class BunnyDataset(BaseDataset):
+class CustomDataset(BaseDataset):
     @staticmethod
     def modify_commandline_options(parser, is_train):
         parser.add_argument(
@@ -70,7 +70,7 @@ class BunnyDataset(BaseDataset):
             "--use_test_data", type=int, default=-1, help="train or test dataset",
         )
         parser.add_argument(
-            "--test_views", type=str, default="2,18,34,62,80,95,110,124", help="held out views",
+            "--test_views", type=str, default="", help="held out views",
         )
 
         return parser
@@ -84,26 +84,21 @@ class BunnyDataset(BaseDataset):
         self.extrinsics = np.load(self.data_dir + "/in_camExtrinsics.npy")
 
         self.total = self.campos.shape[0]
-
-        if os.path.isfile(self.data_dir + '/exclude.txt'):
-            with open(self.data_dir + '/exclude.txt', 'r') as f:
-                exclude_views = [int(x) for x in f.readline().strip().split(',')]
-        else:
-            exclude_views = []
-
-        if os.path.isfile(self.data_dir + '/test_views.txt'):
-            with open(self.data_dir + '/test_views.txt', 'r') as f:
-                test_views = [int(x) for x in f.readline().strip().split(',')]
-        else:
+        if len(opt.test_views) > 0:
             test_views = [int(x) for x in opt.test_views.split(',')]
+        else:
+            test_num = self.total // 16
+            test_idx = torch.linspace(0, 1, test_num) * (self.total - 1)
+            test_views = [int(x) for x in test_idx]
 
-        if self.opt.use_test_data > 0:
+        if self.opt.is_train:
+            self.indexes = [i for i in range(self.total) if i not in test_views]
+            assert len(self.indexes) == self.campos.shape[0] - len(test_views)
+        else:
             self.indexes = test_views
             assert len(self.indexes) > 0
-        else:
-            self.indexes = [i for i in range(self.total) if i not in test_views and i not in exclude_views]
-            assert len(self.indexes) == self.campos.shape[0] - len(test_views) - len(exclude_views)
 
+        self.total = len(self.indexes)
         print("Total views:", self.total)
 
         print("Loading data in memory")
@@ -121,8 +116,10 @@ class BunnyDataset(BaseDataset):
 
         self.height = self.gt_image[0].shape[0]
         self.width = self.gt_image[0].shape[1]
-        print("center cam pos: ", self.campos[69])
-        self.center_cam_pos = self.campos[69]
+
+        center_idx = self.indexes[self.total // 2]
+        print("center cam pos: ", self.campos[center_idx])
+        self.center_cam_pos = self.campos[center_idx]
 
         self.m_sample_to_camera = perspective_projection([self.height,self.width], 40, 1e-2, 2).I
 
