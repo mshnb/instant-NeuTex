@@ -29,13 +29,15 @@ def lookat(origin, target, up):
     return mat_lookat
 
 parser = ArgumentParser()
-parser.add_argument('-s', '--size', type=int, default=256, help='number of views')
-parser.add_argument('-a', '--addition', type=int, default=64, help='number of additional views in the top sphere')
+parser.add_argument('-s', '--size', type=int, default=128, help='number of views')
+parser.add_argument('-a', '--addition', type=int, default=32, help='number of additional views in the top sphere')
 parser.add_argument('-i', '--input', type=str, default=r'./bunny/bunny.xml', help='input scene xml path')
 parser.add_argument('-o', '--output', type=str, default=r'../run/bunny', help='output path of the dataset')
 parser.add_argument('--gpu', action='store_true', help='use mitsuba3\'s gpu backend')
 parser.add_argument('--clear', action='store_true', help='delete all prev data')
 parser.add_argument('--mi', type=str, default='../../mitsuba3/build/mitsuba', help='locate mitsuba')
+parser.add_argument('--distance', type=float, default=2.5, help='distance from camera to origin')
+parser.add_argument('--mutation', type=float, default=0.1, help='range of mutation when making jitter for camera')
 args = parser.parse_args()
 
 mi = args.mi
@@ -53,8 +55,8 @@ os.makedirs(output_path + '/data', exist_ok=True)
 
 backend_str = 'cuda_rgb' if args.gpu else 'scalar_rgb'
 
-radius = 2
-mutation = 0.1
+radius = args.distance
+mutation = args.mutation
 
 total_size = args.size + args.addition
 campos_list = torch.empty(total_size, 3)
