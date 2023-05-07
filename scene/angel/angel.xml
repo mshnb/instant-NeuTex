@@ -4,7 +4,6 @@
 	<default name="resy" value="512" />
 	<default name="resx" value="512" />
 	<default name="max_depth" value="3" />
-	<default name="intensity" value="2.5" />
 	<default name="campos" value="0, 0, 2.5" />
 	<default name="camat" value="0, 0, 0" />
 	<integrator type="$integrator">
@@ -39,38 +38,6 @@
 		</transform>
 		<ref id="angel_bsdf" />
 	</shape>
-	<!-- <emitter type="point">
-	    <point name="position" value="1, 1, 1"/>
-	    <rgb name="intensity" value="$intensity"/>
-	</emitter>
-	<emitter type="point">
-	    <point name="position" value="1, 1, -1"/>
-	    <rgb name="intensity" value="$intensity"/>
-	</emitter>
-	<emitter type="point">
-	    <point name="position" value="-1, 1, 1"/>
-	    <rgb name="intensity" value="$intensity"/>
-	</emitter>
-	<emitter type="point">
-	    <point name="position" value="-1, 1, -1"/>
-	    <rgb name="intensity" value="$intensity"/>
-	</emitter>
-	<emitter type="point">
-	    <point name="position" value="1, -1, 1"/>
-	    <rgb name="intensity" value="$intensity"/>
-	</emitter>
-	<emitter type="point">
-	    <point name="position" value="1, -1, -1"/>
-	    <rgb name="intensity" value="$intensity"/>
-	</emitter>
-	<emitter type="point">
-	    <point name="position" value="-1, -1, 1"/>
-	    <rgb name="intensity" value="$intensity"/>
-	</emitter>
-	<emitter type="point">
-	    <point name="position" value="-1, -1, -1"/>
-	    <rgb name="intensity" value="$intensity"/>
-	</emitter> -->
 	<emitter type="constant">
 		<rgb name="radiance" value="1.0"/>
 	</emitter>

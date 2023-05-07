@@ -30,7 +30,7 @@ class BaseOptions:
 
         # ================================ dataset ================================#
         parser.add_argument(
-            "--data_root", type=str, required=True, help="path to the dataset storage"
+            "--data_root", type=str, default="", help="path to the dataset storage"
         )
         parser.add_argument(
             "--dataset_name",

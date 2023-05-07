@@ -46,7 +46,7 @@ def parse_params():
     return opt
 
 class Neutex():
-    def __init__(self, name, device=0):
+    def __init__(self, dataset, name, device=0):
         prev = os.getcwd()
         os.chdir(pathlib.Path(__file__).parent.absolute())
 
@@ -54,6 +54,7 @@ class Neutex():
         opt.is_train = False
         opt.gpu_ids = [device]
         opt.resume_dir = osp.join(opt.checkpoints_dir, name)
+        opt.data_root = dataset
 
         self.model = create_model(opt)
         self.model.setup(opt)
@@ -239,9 +240,10 @@ class Neutex():
     def normalize_normal(self, uv):
         if uv.shape[-1] == 3:
             scale = 1 / math.pi
-            x, y, z = torch.split(uv, [1, 1, 1], dim=-1)
+            x, y, z = torch.split(pos, [1, 1, 1], dim=-1)
             phi = torch.acos(y) * scale
             theta = (torch.atan2(z, x) * scale + 1) * 0.5
+            theta = torch.fmod(theta + 0.5, 1)
             uv = torch.cat([theta, phi], dim=-1)
         else:
             uv = (uv + 1.0) * 0.5
@@ -332,7 +334,7 @@ class Neutex():
 
             if self.uv_dim == 3:
                 theta, phi = torch.split(math.pi * samples, [1, 1], dim=-1)
-                theta = 2 * theta - math.pi
+                theta = 2 * theta
 
                 o_r = torch.sin(phi)
                 o_y = torch.cos(phi)
