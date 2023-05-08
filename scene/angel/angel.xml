@@ -1,0 +1,44 @@
+<scene version="3.0.0">
+	<default name="integrator" value="path" />
+	<default name="spp" value="128" />
+	<default name="resy" value="512" />
+	<default name="resx" value="512" />
+	<default name="max_depth" value="3" />
+	<default name="campos" value="0, 0, 2.5" />
+	<default name="camat" value="0, 0, 0" />
+	<integrator type="$integrator">
+		<integer name="max_depth" value="$max_depth" />
+		<boolean name="hide_emitters" value="true" />
+	</integrator>
+	<sensor type="perspective">
+		<float name="fov" value="40" />
+		<string name="fov_axis" value="y" />
+		<transform name="to_world">
+			<lookat origin="$campos" target="$camat" up="0, 1, 0" />
+		</transform>
+		<sampler type="independent">
+			<integer name="sample_count" value="$spp" />
+		</sampler>
+		<film type="hdrfilm">
+			<integer name="width" value="$resx" />
+			<integer name="height" value="$resy" />
+			<string name="pixel_format" value="rgba"/>
+			<string name="file_format" value="openexr" />
+		</film>
+	</sensor>
+	<bsdf type="diffuse" id="angel_bsdf">
+	    <texture type="bitmap" name="reflectance">
+	        <string name="filename" value="textures/angel.jpg"/>
+	    </texture>
+	</bsdf>
+	<shape type="obj" id="angel">
+		<string name="filename" value="models/angel.obj" />
+		<transform name="to_world">
+			<matrix value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1" />
+		</transform>
+		<ref id="angel_bsdf" />
+	</shape>
+	<emitter type="constant">
+		<rgb name="radiance" value="1.0"/>
+	</emitter>
+</scene>

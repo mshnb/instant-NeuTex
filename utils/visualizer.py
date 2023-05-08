@@ -78,6 +78,11 @@ class Visualizer:
         self.log_dir = os.path.join(opt.checkpoints_dir, opt.name)
         self.image_dir = os.path.join(opt.checkpoints_dir, opt.name, "images")
 
+    def display_texture(self, total_steps, tex, name):
+        filename = "step-{:08d}-{}.png".format(total_steps, name)
+        filepath = os.path.join(self.image_dir, filename)
+        save_image(np.array(tex), filepath) 
+
     def display_current_results(
         self, visuals, total_steps, camera_position=None, ray_directions=None
     ):

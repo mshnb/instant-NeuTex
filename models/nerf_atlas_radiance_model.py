@@ -12,7 +12,7 @@ from .diff_render_func import (
 from .atlasnet import Atlasnet  # , chamfer_distance
 from .atlasnet.inverse import InverseAtlasnet
 
-from .texture.texture_mlp import TextureViewMlpMix
+from .texture.texture_mlp import TextureViewMlp
 from .embedding import LpEmbedding
 import numpy as np
 
@@ -21,39 +21,21 @@ class NerfAtlasNetwork(nn.Module):
     def __init__(self, opt, device):
         super().__init__()
         self.opt = opt
-
-        self.net_geometry_embedding = LpEmbedding(1, self.opt.geometry_embedding_dim)
-        self.use_ngp = bool(self.opt.use_ngp)
-
-        if 'geo' not in self.opt.use_ngp:
-            self.net_geometry_decoder = GeometryMlpDecoder(
-                code_dim=0,
-                pos_freqs=10,
-                uv_dim=0,
-                uv_count=0,
-                brdf_dim=3,
-                hidden_size=256,
-                num_layers=10,
-                requested_features={
-                    "density",
-                    # , "brdf"
-                },
-            )
-        else:
-            self.net_geometry_decoder = GeometryMlpDecoder(
-                code_dim=0,
-                pos_freqs=0,
-                uv_dim=0,
-                uv_count=0,
-                brdf_dim=3,
-                hidden_size=64,
-                num_layers=1,
-                requested_features={
-                    "density",
-                    # , "brdf"
-                },
-                use_ngp=True
-            )
+        self.pred_normal = opt.loss_normal > 0
+        self.use_bias = opt.bias > 0
+        # self.net_geometry_embedding = LpEmbedding(1, self.opt.geometry_embedding_dim)
+        self.net_geometry_decoder = GeometryMlpDecoder(
+            code_dim=0,
+            pos_freqs=0,
+            uv_dim=0,
+            uv_count=0,
+            brdf_dim=3,
+            hidden_size=64,
+            normal_hidden_size=64,
+            num_layers=1,
+            pred_normal=self.pred_normal,
+            use_bias=self.use_bias
+        )
 
         self.net_atlasnet = Atlasnet(
             self.opt.points_per_primitive,
@@ -61,40 +43,28 @@ class NerfAtlasNetwork(nn.Module):
             self.opt.geometry_embedding_dim,
             self.opt.atlasnet_activation,
             self.opt.primitive_type,
+            use_bias=self.use_bias
         )
 
         self.net_inverse_atlasnet = InverseAtlasnet(
             opt.primitive_count,
             self.opt.geometry_embedding_dim,
             self.opt.primitive_type,
+            use_bias=self.use_bias,
+            scale_uv_weight=opt.scale_uv_weight
         )
 
         # other types are not part of the release
         assert opt.texture_decoder_type == "texture_view_mlp_mix"
-
-        if 'color' not in self.opt.use_ngp:
-            self.net_texture = TextureViewMlpMix(
-                count=opt.primitive_count,
-                out_channels=3,
-                num_freqs=10,
-                view_freqs=6,
-                uv_dim=2 if self.opt.primitive_type == "square" else 3,
-                layers=[int(x) for x in self.opt.texture_decoder_depth.split(",")],
-                width=self.opt.texture_decoder_width,
-                clamp=False,
-            )
-        else:
-            self.net_texture = TextureViewMlpMix(
-                count=opt.primitive_count,
-                out_channels=3,
-                num_freqs=0,
-                view_freqs=6,
-                uv_dim=2 if self.opt.primitive_type == "square" else 3,
-                layers=[2, 0],
-                width=64,
-                clamp=False,
-                use_ngp=True
-            )
+        self.net_texture = TextureViewMlp(
+            uv_dim=2 if self.opt.primitive_type == "square" else 3,
+            out_channels=3,
+            view_freqs=5,
+            layers=[2, 2],
+            width=64,
+            clamp=False,
+            use_bias=self.use_bias
+        )
         self.raygen = find_ray_generation_method("cube")
 
     def forward(
@@ -104,24 +74,18 @@ class NerfAtlasNetwork(nn.Module):
         background_color=None,
         compute_atlasnet=True,
         compute_inverse_mapping=False,
-        compute_atlasnet_density=False,
+        compute_atlasnet_density=False
     ):
         output = {}
-
-        zeros = torch.zeros(
-            camera_position.shape[0], dtype=torch.long, device=camera_position.device
-        )
-        geometry_embedding = self.net_geometry_embedding(zeros)
-
         orig_ray_pos, ray_dist, ray_valid, ray_ts = self.raygen(
             camera_position, ray_direction, self.opt.sample_num, jitter=0.05
         )
         ray_pos = orig_ray_pos  # (N, rays, samples, 3)
 
-        mlp_output = self.net_geometry_decoder(None, ray_pos)
+        mlp_output = self.net_geometry_decoder(ray_pos, require_grad=self.pred_normal)
 
         if compute_atlasnet:
-            point_array_2d, points_3d = self.net_atlasnet(geometry_embedding)
+            point_array_2d, points_3d = self.net_atlasnet(camera_position.device)
 
             output["points"] = points_3d.view(
                 points_3d.shape[0], -1, points_3d.shape[-1]
@@ -129,37 +93,27 @@ class NerfAtlasNetwork(nn.Module):
                 0, 2, 1
             )  # (N, 3, total_points)
 
-            (
-                output["points_2d_inverse"],
-                output["weights_inverse"],
-                output["weights_inverse_logits"],
-            ) = self.net_inverse_atlasnet(
-                geometry_embedding,
-                points_3d.view(points_3d.shape[0], -1, points_3d.shape[-1]),
-            )
-            output["gt_primitive"] = self.net_atlasnet.get_label(points_3d.device)[None]
-            output["gt_points_2d"] = torch.stack(point_array_2d, dim=1)[None]
+            # output["points_2d_inverse"] = self.net_inverse_atlasnet(
+            #     points_3d.view(points_3d.shape[0], -1, points_3d.shape[-1]),
+            # )
+            # output["gt_primitive"] = self.net_atlasnet.get_label(points_3d.device)[None]
+            # output["gt_points_2d"] = torch.stack(point_array_2d, dim=1)[None]
 
             if compute_atlasnet_density:
                 for param in self.net_geometry_decoder.parameters():
                     param.requires_grad_(False)
                 output["points_density"] = self.net_geometry_decoder(
-                    None, points_3d.view(points_3d.shape[0], -1, 1, 3)
+                    points_3d.view(points_3d.shape[0], -1, 1, 3)
                 )["density"]
                 for param in self.net_geometry_decoder.parameters():
                     param.requires_grad_(True)
 
-        uv, weights, logits = self.net_inverse_atlasnet(geometry_embedding, ray_pos)
+        uv = self.net_inverse_atlasnet(ray_pos)
 
-        point_features = self.net_texture(
-            None, uv, ray_direction[:, :, None, :], weights
-        )
-        # point_features = torch.ones_like(point_features, device=point_features.device)
+        outputs = self.net_texture(uv, ray_direction[:, :, None, :])
 
-        points_inverse = None
-
-        density = mlp_output["density"][..., None]
-        radiance = point_features[..., :3]
+        density = mlp_output["density"]
+        radiance = outputs['color']
         bsdf = [density, radiance]
         bsdf = torch.cat(bsdf, dim=-1)
 
@@ -182,34 +136,51 @@ class NerfAtlasNetwork(nn.Module):
             radiance_render,
             alpha_blend,
         )
+
         if background_color is not None:
-            ray_color += (
-                background_color[:, None, :] * background_blend_weight[:, :, None]
-            )
+            ray_color = ray_color + (background_color[:, None, :] * background_blend_weight[:, :, None])
+
         ray_color = simple_tone_map(ray_color)
         output["color"] = ray_color
         output["transmittance"] = background_blend_weight
+        
+        mask = 1 - background_blend_weight > 1e-2
+        integrated_uv = (uv * blend_weight[..., None]).sum(dim=-2) * 0.5 + 0.5
+        integrated_uv[~mask] = 0
+        if self.opt.primitive_type == 'square':
+            integrated_uv = torch.cat([integrated_uv, torch.zeros(*integrated_uv.shape[:-1], 1, device=uv.device)], dim=-1)
+        output['uv'] = integrated_uv
+
+        if self.pred_normal:
+            # normal = outputs['normal']
+            normal = mlp_output["normal"]
+            output['normal'] = normal
+            output['sigma_grad'] = mlp_output["sigma_grad"]
+
+            integrated_normal = (normal.detach() * blend_weight[..., None]).sum(dim=-2)
+            integrated_normal = F.normalize(integrated_normal, dim=-1, eps=1e-6) * 0.5 + 0.5
+            integrated_normal[~mask] = 0
+            output['integrated_normal'] = integrated_normal
 
         if compute_inverse_mapping:
             output["points_original"] = ray_pos
-            if points_inverse is None:
-                points_inverse = self.net_atlasnet.map(geometry_embedding, uv)
-            output["points_inverse"] = points_inverse
-            output["points_inverse_primitive_weights"] = weights
-            output["points_inverse_weights"] = blend_weight
+            output["points_inverse"] = self.net_atlasnet.map(uv)
 
+        output["weights"] = blend_weight
         return output
 
     def ngp_parameters(self):
         params = []
-        if 'geo' in self.opt.use_ngp:
-            params.extend(list(self.net_geometry_decoder.parameters()))
-        if 'color' in self.opt.use_ngp:
-            params.extend(list(self.net_texture.parameters()))
+        params.extend(list(self.net_geometry_decoder.parameters()))
+        params.extend(list(self.net_texture.parameters()))
         return params
 
     def other_parameters(self):
-        params = list(set(self.parameters()) - set(self.ngp_parameters()))
+        params = []
+        params.extend(list(self.net_atlasnet.parameters()))
+        params.extend(list(self.net_inverse_atlasnet.parameters()))
+
+        # params = list(set(self.parameters()) - set(self.ngp_parameters()))
         return params
 
 
@@ -303,6 +274,28 @@ class NerfAtlasRadianceModel(BaseModel):
         )
 
         parser.add_argument(
+            "--loss_normal",
+            required=True,
+            type=float,
+            help="predict normal",
+        )
+
+        parser.add_argument(
+            "--bias",
+            required=True,
+            type=float,
+            help="use bias in linear layer",
+        )
+
+        parser.add_argument(
+            "--scale_uv_weight",
+            required=False,
+            default=1.0,
+            type=float,
+            help="scale_uv_weight at the last layer",
+        )
+
+        parser.add_argument(
             "--primitive_type",
             type=str,
             choices=["square", "sphere"],
@@ -340,17 +333,12 @@ class NerfAtlasRadianceModel(BaseModel):
         if self.is_train:
             self.schedulers = []
             self.optimizers = []
-
-            if not self.net_nerf_atlas.module.use_ngp:
-                params = list(self.net_nerf_atlas.parameters())
-                self.optimizer = torch.optim.Adam(params, lr=opt.lr)
-            else:
-                other_params = self.net_nerf_atlas.module.other_parameters()
-                ngp_params = self.net_nerf_atlas.module.ngp_parameters()
-                self.optimizer = torch.optim.Adam([
-                    {'params': other_params, 'lr': opt.lr},
-                    {'params': ngp_params, 'lr': opt.lr * 100},
-                ])
+            other_params = self.net_nerf_atlas.module.other_parameters()
+            ngp_params = self.net_nerf_atlas.module.ngp_parameters()
+            self.optimizer = torch.optim.Adam([
+                {'params': other_params, 'lr': opt.lr},
+                {'params': ngp_params, 'lr': opt.lr}, # * 10
+            ])
             self.optimizers.append(self.optimizer)
 
         if self.opt.sphere_init > 0:
@@ -377,6 +365,7 @@ class NerfAtlasRadianceModel(BaseModel):
         )
         use_inverse_mapping = self.opt.loss_inverse_mapping_weight > 0
         use_atlasnet_density = self.opt.loss_density_weight > 0
+
         self.output = self.net_nerf_atlas(
             self.input["campos"],
             self.input["raydir"],
@@ -396,6 +385,12 @@ class NerfAtlasRadianceModel(BaseModel):
             if "color" in self.output:
                 self.visual_names.append("ray_color")
                 self.ray_color = self.output["color"]
+            if "uv" in self.output:
+                self.visual_names.append("uv")
+                self.uv = self.output["uv"]
+            if "integrated_normal" in self.output:
+                self.visual_names.append("normal")
+                self.normal = self.output["integrated_normal"]
             if "foreground_blend_weight" in self.output:
                 self.visual_names.append("transmittance")
                 self.transmittance = self.output["foreground_blend_weight"][
@@ -409,7 +404,7 @@ class NerfAtlasRadianceModel(BaseModel):
 
         if self.opt.loss_color_weight > 0:
             self.loss_color = F.mse_loss(self.output["color"], self.input["gt_image"])
-            self.loss_total += self.opt.loss_color_weight * self.loss_color
+            self.loss_total = self.loss_total + self.opt.loss_color_weight * self.loss_color
             self.loss_names.append("color")
 
         if self.opt.loss_bg_weight > 0:
@@ -419,7 +414,7 @@ class NerfAtlasRadianceModel(BaseModel):
                 )
             else:
                 self.loss_bg = 0
-            self.loss_total += self.opt.loss_bg_weight * self.loss_bg
+            self.loss_total = self.loss_total + self.opt.loss_bg_weight * self.loss_bg
             self.loss_names.append("bg")
 
         if self.opt.loss_chamfer_weight > 0:
@@ -432,14 +427,14 @@ class NerfAtlasRadianceModel(BaseModel):
                     self.output["points"], self.input["point_cloud"].permute(0, 2, 1)
                 )
             self.loss_chamfer = torch.mean(dist1) + torch.mean(dist2)
-            self.loss_total += self.opt.loss_chamfer_weight * self.loss_chamfer
+            self.loss_total = self.loss_total + self.opt.loss_chamfer_weight * self.loss_chamfer
             self.loss_names.append("chamfer")
 
         if self.opt.loss_origin_weight > 0:
             self.loss_origin = (
                 ((self.output["points"] ** 2).sum(-2) - 1).clamp(min=0).sum()
             )
-            self.loss_total += self.opt.loss_origin_weight * self.loss_origin
+            self.loss_total = self.loss_total + self.opt.loss_origin_weight * self.loss_origin
             self.loss_names.append("origin")
 
         if self.opt.loss_inverse_uv_weight > 0:
@@ -454,7 +449,7 @@ class NerfAtlasRadianceModel(BaseModel):
                 inverse_points_2d,
                 self.output["gt_points_2d"].expand_as(inverse_points_2d),
             )
-            self.loss_total += self.opt.loss_inverse_uv_weight * self.loss_inverse_uv
+            self.loss_total = self.loss_total + self.opt.loss_inverse_uv_weight * self.loss_inverse_uv
             self.loss_names.append("inverse_uv")
 
         if self.opt.loss_inverse_selection_weight > 0:
@@ -465,7 +460,7 @@ class NerfAtlasRadianceModel(BaseModel):
             self.loss_inverse_selection = F.cross_entropy(
                 weights_inverse_logits.permute(0, 2, 1), gt_weights
             )
-            self.loss_total += (
+            self.loss_total = self.loss_total + (
                 self.opt.loss_inverse_selection_weight * self.loss_inverse_selection
             )
             self.loss_names.append("inverse_selection")
@@ -473,16 +468,14 @@ class NerfAtlasRadianceModel(BaseModel):
         if self.opt.loss_inverse_mapping_weight > 0:
             gt_points = self.output["points_original"]
             points = self.output["points_inverse"]
-            ppw = self.output["points_inverse_primitive_weights"]
-            pw = self.output["points_inverse_weights"]
+            pw = self.output["weights"]
 
-            dist = ((gt_points[..., None, :] - points) ** 2).sum(-1)
-            dist = (dist * ppw).sum(-1)
+            dist = ((gt_points - points) ** 2).sum(-1)
             dist = (dist * pw).sum(-1)
             dist = dist.mean()
 
             self.loss_inverse_mapping = dist
-            self.loss_total += (
+            self.loss_total = self.loss_total + (
                 self.opt.loss_inverse_mapping_weight * self.loss_inverse_mapping
             )
             self.loss_names.append("inverse_mapping")
@@ -491,8 +484,24 @@ class NerfAtlasRadianceModel(BaseModel):
             self.loss_density = (
                 (1 - self.output["points_density"] / 20).clamp(min=0).mean()
             )
-            self.loss_total += self.opt.loss_density_weight * self.loss_density
+            self.loss_total = self.loss_total + self.opt.loss_density_weight * self.loss_density
             self.loss_names.append("density")
+
+        if self.opt.loss_normal > 0:
+            normal = self.output['normal']
+            sigma_grad = self.output['sigma_grad']
+            w = self.output['weights']
+
+            normal_loss = w * ((sigma_grad.detach() - normal) ** 2).sum(-1)
+
+            dirs = self.input['raydir']
+            dirs = dirs.view(-1, 1, 3).expand_as(normal)
+            normal_reg_loss = torch.sum(dirs.detach() * normal, dim=-1).clip(min=0) ** 2
+            normal_reg_loss = (w * normal_reg_loss).sum(-1)
+
+            self.loss_normal = normal_loss.mean() + normal_reg_loss.mean()
+            self.loss_total = self.loss_total + self.opt.loss_normal * self.loss_normal
+            self.loss_names.append("normal")  
 
     def backward(self):
         self.optimizer.zero_grad()
@@ -538,7 +547,7 @@ class NerfAtlasRadianceModel(BaseModel):
                 density = self.net_nerf_atlas.module.net_geometry_decoder(None, raypos)[
                     "density"
                 ]
-                uv, weights, logits = self.net_nerf_atlas.module.net_inverse_atlasnet(
+                uv = self.net_nerf_atlas.module.net_inverse_atlasnet(
                     geometry_embedding, raypos
                 )
 
@@ -592,7 +601,7 @@ class NerfAtlasRadianceModel(BaseModel):
                 )
                 weights[0, :, :, tex] = 1
                 textures.append(
-                    self.net_nerf_atlas.module.net_texture(None, grid, weights)[0]
+                    self.net_nerf_atlas.module.net_texture(grid, weights)
                 )
             return grid.squeeze(), [t.squeeze() for t in textures]
 
@@ -643,8 +652,8 @@ class NerfAtlasRadianceModel(BaseModel):
 
                 textures.append(
                     self.net_nerf_atlas.module.net_texture(
-                        None, grid, viewdir, weights
-                    )[0]
+                        grid, viewdir, weights
+                    )
                 )
 
             return meshes, [t.squeeze() for t in textures]

@@ -9,114 +9,6 @@ modified from
 https://github.com/ThibaultGROUEIX/AtlasNet
 """
 
-
-class Mapping2Dto3D(nn.Module):
-    """
-    Modified AtlasNet core function
-    """
-
-    def __init__(
-        self,
-        code_size,
-        input_point_dim,
-        hidden_size=512,
-        num_layers=2,
-        activation="relu",
-    ):
-        """
-        template_size: input size
-        """
-        super().__init__()
-        assert activation in ["relu", "softplus"]
-
-        self.code_size = code_size
-        self.input_size = input_point_dim
-        self.dim_output = 3
-        self.hidden_neurons = hidden_size
-        self.num_layers = num_layers
-
-        self.linear1 = nn.Linear(self.input_size, self.code_size)
-        self.linear2 = nn.Linear(self.code_size, self.hidden_neurons)
-
-        init_weights(self.linear1)
-        init_weights(self.linear2)
-
-        self.linear_list = nn.ModuleList(
-            [
-                nn.Linear(self.hidden_neurons, self.hidden_neurons)
-                for i in range(self.num_layers)
-            ]
-        )
-
-        for l in self.linear_list:
-            init_weights(l)
-
-        self.last_linear = nn.Linear(self.hidden_neurons, self.dim_output)
-        init_weights(self.last_linear)
-
-        if activation == "relu":
-            self.activation = F.relu
-        elif activation == "softplus":
-            self.activation = F.softplus
-
-        # self.diff_geom = DiffGeomProps()
-
-    def _forward(self, x, latent):
-        x = self.linear1(x) + latent
-        x = self.activation(x)
-        x = self.activation(self.linear2(x))
-        for i in range(self.num_layers):
-            x = self.activation(self.linear_list[i](x))
-        return self.last_linear(x)
-
-    def forward(self, x, latent):
-        assert x.shape[-1] == self.input_size
-        self.uv_ = x
-
-        self.xyz_ = self._forward(x, latent)
-        return self.xyz_
-
-    def compute_normal(self, x, latent, eps=0.01):
-        assert x.shape[-1] == self.input_size
-        with torch.no_grad():
-            angles = torch.rand(x.shape[:-1], dtype=x.dtype).to(x.device) * np.pi * 2
-            _x = torch.cos(angles)
-            _y = torch.sin(angles)
-            dir1 = torch.stack([_x, _y], dim=-1)
-            dir2 = torch.stack([-_y, _x], dim=-1)
-
-        if self.input_size == 2:
-            x1 = x + dir1 * eps
-            x2 = x + dir2 * eps
-
-        elif self.input_size == 3:
-            with torch.no_grad():
-                v1 = torch.zeros_like(x, dtype=x.dtype).to(x.device)
-                v2 = torch.zeros_like(x, dtype=x.dtype).to(x.device)
-                v1[..., 2] = 1
-                v2[..., 0] = 1
-
-                c1 = x.cross(v1)
-                c2 = x.cross(v2)
-                mask = (c1 * c1).sum(-1, keepdim=True) > (c2 * c2).sum(-1, keepdim=True)
-                mask = mask.float()
-                t1 = c1 * mask + c2 * (1 - mask)
-                t1 = F.normalize(t1, dim=-1)
-                t2 = x.cross(t1)
-                d1 = t1 * dir1[..., [0]] + t2 * dir1[..., [1]]
-                d2 = t1 * dir2[..., [0]] + t2 * dir2[..., [1]]
-
-                x1 = F.normalize(x + d1 * eps, dim=-1)
-                x2 = F.normalize(x + d2 * eps, dim=-1)
-
-        p = self._forward(x, latent)
-        p1 = self._forward(x1, latent)
-        p2 = self._forward(x2, latent)
-        normal = F.normalize((p1 - p).cross(p2 - p), dim=-1)
-
-        return p, normal
-
-
 class SquareTemplate:
     def __init__(self):
         self.regular_num_points = 0
@@ -173,6 +65,7 @@ class Atlasnet(nn.Module):
         code_size,
         activation,
         primitive_type="square",
+        use_bias=False
     ):
         """
         Core Atlasnet module : decoder to meshes and pointclouds.
@@ -192,31 +85,38 @@ class Atlasnet(nn.Module):
             raise Exception("Unknown primitive type {}".format(primitive_type))
 
         self.num_points_per_primitive = num_points_per_primitive
-        self.num_primitives = num_primitives
 
         # Initialize templates
-        self.template = [self.template_class() for i in range(0, num_primitives)]
+        self.template = self.template_class()
 
         # Intialize deformation networks
-        self.decoder = nn.ModuleList(
+        self.input_size = self.input_point_dim
+        self.dim_output = 3
+        self.num_layers = 2
+        self.hidden_neurons = 128
+
+        self.linear1 = nn.Linear(self.input_size, self.hidden_neurons, bias=use_bias)
+        init_weights(self.linear1)
+
+        self.linear_list = nn.ModuleList(
             [
-                Mapping2Dto3D(code_size, self.input_point_dim, activation=activation)
-                for i in range(0, num_primitives)
+                nn.Linear(self.hidden_neurons, self.hidden_neurons, bias=use_bias)
+                for i in range(self.num_layers)
             ]
         )
 
-        with torch.no_grad():
-            self.label = torch.zeros(num_points_per_primitive * num_primitives).long()
-            for i in range(num_primitives):
-                self.label[
-                    num_points_per_primitive * i : num_points_per_primitive * (i + 1)
-                ] = i
+        for l in self.linear_list:
+            init_weights(l)
 
-    def get_label(self, device):
-        self.label = self.label.to(device)
-        return self.label
+        self.last_linear = nn.Linear(self.hidden_neurons, self.dim_output, bias=use_bias)
+        init_weights(self.last_linear)
 
-    def forward(self, latent_vector, regular_point_count=None):
+        if activation == "relu":
+            self.activation = F.relu
+        elif activation == "softplus":
+            self.activation = F.softplus
+
+    def forward(self, device=0, regular_point_count=None):
         """
         Deform points from self.template using the embedding latent_vector
         :param latent_vector: an opt.bottleneck size vector encoding a 3D shape or an image. size : batch, bottleneck
@@ -224,66 +124,32 @@ class Atlasnet(nn.Module):
         """
 
         if regular_point_count is None:
-            input_points = [
-                self.template[i].get_random_points(
-                    self.num_points_per_primitive, latent_vector.device,
-                )
-                for i in range(self.num_primitives)
-            ]
+            input_points = self.template.get_random_points(self.num_points_per_primitive, device)
         else:
-            input_points = [
-                self.template[i].get_regular_points(
-                    regular_point_count, latent_vector.device
-                )
-                for i in range(self.num_primitives)
-            ]
+            input_points = self.template.get_regular_points(regular_point_count, device)
 
-        points2d = [
-            self.decoder[i](
-                input_points[i].unsqueeze(0), latent_vector.unsqueeze(1)
-            ).unsqueeze(1)
-            for i in range(0, self.num_primitives)
-        ]
+        x = self.linear1(input_points.unsqueeze(0))
+        x = self.activation(x)
+        for i in range(self.num_layers):
+            x = self.activation(self.linear_list[i](x))
 
-        output_points = torch.cat(points2d, dim=1)  # batch, nb_prim, num_point, 3
+        output_points = self.last_linear(x).unsqueeze(1)
 
         return input_points, output_points.contiguous()
 
-    def map(self, latent_vector, uvs):
+    def map(self, uvs):
         """
         uvs: (N,...,P,2/3)
         latent_vector: (N,V)
         """
         assert uvs.shape[-1] == self.input_point_dim
-        assert uvs.shape[-2] == self.num_primitives
         input_shape = uvs.shape
-        output = torch.stack(
-            [
-                self.decoder[i](
-                    uvs[..., i, :].view(input_shape[0], -1, self.input_point_dim),
-                    latent_vector.unsqueeze(1),
-                )
-                for i in range(self.num_primitives)
-            ],
-            dim=-2,
-        )
+
+        input_points = uvs[..., :].view(input_shape[0], -1, self.input_point_dim)
+        x = self.linear1(input_points)
+        x = self.activation(x)
+        for i in range(self.num_layers):
+            x = self.activation(self.linear_list[i](x))
+        output = self.last_linear(x)
+
         return output.view(input_shape[:-1] + (3,))
-
-    def map_and_normal(self, latent_vector, uvs, eps=0.01):
-        assert uvs.shape[-1] == self.input_point_dim
-        assert uvs.shape[-2] == self.num_primitives
-        input_shape = uvs.shape
-        outputs = []
-        normals = []
-        for i in range(self.num_primitives):
-            output, normal = self.decoder[i].compute_normal(
-                uvs[..., i, :].view(input_shape[0], -1, self.input_point_dim),
-                latent_vector.unsqueeze(1),
-                eps=eps,
-            )
-            outputs.append(output)
-            normals.append(normal)
-
-        outputs = torch.stack(outputs, dim=-2).view(input_shape[:-1] + (3,))
-        normals = torch.stack(normals, dim=-2).view(input_shape[:-1] + (3,))
-        return outputs, normals

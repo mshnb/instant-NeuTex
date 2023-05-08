@@ -30,7 +30,7 @@ class BaseOptions:
 
         # ================================ dataset ================================#
         parser.add_argument(
-            "--data_root", type=str, required=True, help="path to the dataset storage"
+            "--data_root", type=str, default="", help="path to the dataset storage"
         )
         parser.add_argument(
             "--dataset_name",
@@ -55,13 +55,6 @@ class BaseOptions:
             type=str,
             required=True,
             help="name of model, determine which network model to use",
-        )
-
-        parser.add_argument(
-            "--use_ngp",
-            type=str,
-            nargs='+',
-            default=[]
         )
 
         # ================================ running ================================#
