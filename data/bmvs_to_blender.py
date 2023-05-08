@@ -5,8 +5,10 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
-root = r"D:\data\zjs"
-instance_dir = 'scan24_diff'
+from scene.generate_nerf_data import convert
+
+root = r"D:\shares\NeuS"
+instance_dir = 'bmvs_sculpture'
 
 
 def to16b(img):
@@ -55,9 +57,17 @@ def load_K_Rt_from_P(filename, P=None):
     intrinsics = np.eye(4)
     intrinsics[:3, :3] = K
 
-    pose = np.eye(4, dtype=np.float32)
-    pose[:3, :3] = R.transpose()
-    pose[:3, 3] = (t[:3] / t[3])[:, 0]
+    right = R[0, :]
+    up = R[1, :]
+    m_dir = R[2, :]
+    pos = (t[:3] / t[3])[:, 0]
+
+    pose = np.mat([
+        np.append(convert(right), 0),
+        np.append(convert(up), 0),
+        np.append(convert(m_dir), 0),
+        np.append(convert(pos), 1)
+    ]).T.A
 
     return intrinsics, pose
 
@@ -67,17 +77,14 @@ def main():
 
     image_dir = 'image'
     n_images = len(os.listdir(image_dir))
-    val_dir = 'val'
-    n_val = len(os.listdir(val_dir))
 
-    cam_file = 'cameras.npz'
+    cam_file = 'cameras_sphere.npz'
     camera_dict = np.load(cam_file)
     world_mats = [camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(n_images)]
-    val_mats = [camera_dict['val_mat_%d' % idx].astype(np.float32) for idx in range(n_val)]
 
     intrinsics_all = []
     pose_all = []
-    for mat in world_mats + val_mats:
+    for mat in world_mats:
         P = mat
         P = P[:3, :4]
         intrinsics, pose = load_K_Rt_from_P(None, P)
@@ -100,24 +107,22 @@ def main():
 
     test_json = copy.deepcopy(train_json)
 
+    need_handle_mask = False
+    if not os.path.exists('data'):
+        os.makedirs('data')
+        need_handle_mask = True
+
     for i in tqdm(range(n_images)):
         frames = train_json['frames']
 
-        depth = cv2.imread(os.path.join('depth', '{:04d}.exr'.format(i)), -1)
-        cv2.imwrite(os.path.join('depth', '{:04d}.png'.format(i)), to16b(depth / scale.max()))
+        if need_handle_mask:
+            img = cv2.imread(os.path.join('image', '{:03d}.png'.format(i)), -1)
+            mask = cv2.imread(os.path.join('mask', '{:03d}.png'.format(i)), -1)
+            cv2.imwrite(os.path.join('data', '{:04d}.png'.format(i)), np.concatenate([img, mask[..., 0:1]], axis=-1))
 
         frame = {
-            'file_path': f'./image/{i:04d}',
-            'depth_path': f'./depth/{i:04d}.png',
+            'file_path': f'./data/{i:04d}',
             'transform_matrix': s(pose_all[i], scale.max(), offset)
-        }
-        frames.append(frame)
-
-    for i in tqdm(range(n_val)):
-        frames = test_json['frames']
-        frame = {
-            'file_path': f'./val/{i:04d}',
-            'transform_matrix': s(pose_all[i + n_images], scale.max(), offset)
         }
         frames.append(frame)
 
