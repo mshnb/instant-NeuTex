@@ -240,7 +240,7 @@ class Neutex():
     def normalize_normal(self, uv):
         if uv.shape[-1] == 3:
             scale = 1 / math.pi
-            x, y, z = torch.split(pos, [1, 1, 1], dim=-1)
+            x, y, z = torch.split(uv, [1, 1, 1], dim=-1)
             phi = torch.acos(y) * scale
             theta = (torch.atan2(z, x) * scale + 1) * 0.5
             theta = torch.fmod(theta + 0.5, 1)
@@ -295,7 +295,7 @@ class Neutex():
         acc_density = torch.zeros(batch_size, device=self.device) 
 
         # collect samples
-        for step in tqdm(range(steps)):
+        for step in range(steps):
             pos = ray_o + ray_d * dt * step
 
             outputs = self.nets['nerf'](pos)
