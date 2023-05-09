@@ -113,8 +113,7 @@ class CustomDataset(BaseDataset):
             img = cv2.imread(file, -1)
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGBA)
             img = img / 255.
-            mask = (img[..., [-1]] > 0).astype(int)
-            # cv2.imwrite('mask.exr', mask.astype(np.float32))
+            mask = torch.from_numpy(img[..., [-1]] > 0).long()
             img = img[...,:3]
             self.gt_image.append(img)
             self.gt_mask.append(mask)
