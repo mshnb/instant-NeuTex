@@ -82,6 +82,10 @@ class CustomDataset(BaseDataset):
         self.campos = np.load(self.data_dir + "/in_camOrgs.npy")
         self.camat = np.load(self.data_dir + "/in_camAts.npy")
         self.extrinsics = np.load(self.data_dir + "/in_camExtrinsics.npy")
+        if os.path.exists(self.data_dir + "/fov.npy"):
+            self.fov = np.load(self.data_dir + "/fov.npy")
+        else:
+            self.fov = 40
 
         self.total = self.campos.shape[0]
         if len(opt.test_views) > 0:
@@ -121,7 +125,7 @@ class CustomDataset(BaseDataset):
         print("center cam pos: ", self.campos[center_idx])
         self.center_cam_pos = self.campos[center_idx]
 
-        self.m_sample_to_camera = perspective_projection([self.height,self.width], 40, 1e-2, 2).I
+        self.m_sample_to_camera = perspective_projection([self.height,self.width], self.fov, 1e-2, 2).I
 
     def __len__(self):
         return len(self.indexes)
