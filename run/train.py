@@ -49,6 +49,8 @@ def test(model, dataset, visualizer, opt, test_steps):
         data = dataset.get_item(select_ids[i])
         raydir = data["raydir"].clone()
         gt_image = data["gt_image"].clone()
+        gt_mask = data["gt_mask"].clone()
+
         if "gt_depth" in data:
             gt_depth = data["gt_depth"].clone()
             gt_mask = data["gt_mask"].clone()
@@ -66,6 +68,8 @@ def test(model, dataset, visualizer, opt, test_steps):
 
             data["raydir"] = raydir[:, start:end, :]
             data["gt_image"] = gt_image[:, start:end, :]
+            data["gt_mask"] = gt_mask[:, start:end, :]
+
             if "gt_depth" in data:
                 data["gt_depth"] = gt_depth[:, start:end]
                 data["gt_mask"] = gt_mask[:, start:end]

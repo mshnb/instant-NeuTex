@@ -133,8 +133,6 @@ class CustomDataset(BaseDataset):
         gt_image = self.gt_image[idx]
         gt_mask = self.gt_mask[idx]
         
-        item["gt_mask"] = gt_mask.permute(2, 0, 1).float()
-
         height = gt_image.shape[0]
         width = gt_image.shape[1]
 
@@ -181,6 +179,10 @@ class CustomDataset(BaseDataset):
         gt_image = np.reshape(gt_image, (-1, 3))
         item["gt_image"] = torch.from_numpy(gt_image).float().contiguous()
         item["background_color"] = torch.from_numpy(np.zeros(3)).float().contiguous()
+        
+        gt_mask = gt_mask[py.astype(np.int32), px.astype(np.int32), :]
+        gt_mask = np.reshape(gt_mask, (-1, 1))
+        item["gt_mask"] = gt_mask
 
         return item
 
