@@ -14,7 +14,7 @@ from argparse import ArgumentParser
 def normalize(v):
     return v / (np.linalg.norm(v) + 1e-15)
 
-def lookat(origin, target, up):
+def lookat(origin, target, up=np.asarray([0, 1, 0])):
     dir = normalize(target - origin)
     left = normalize(np.cross(up, dir))
     new_up = np.cross(dir, left)
