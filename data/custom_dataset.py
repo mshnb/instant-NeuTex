@@ -4,7 +4,7 @@ import torch
 import os
 import os.path as osp
 import glob
-import imageio
+import cv2
 from .base_dataset import BaseDataset
 
 def perspective(fov, near, far):
@@ -110,8 +110,11 @@ class CustomDataset(BaseDataset):
         self.gt_mask = []
         files = sorted(glob.glob(osp.join(self.data_dir, 'data', '[0-9]*.png')), key=lambda path: int(path[-8:-4]))
         for file in files:
-            img = np.asarray(imageio.imread(file)) / 255
-            mask = torch.from_numpy(img[...,[-1]] > 0).long()
+            img = cv2.imread(file, -1)
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGBA)
+            img = img / 255.
+            mask = (img[..., [-1]] > 0).astype(int)
+            # cv2.imwrite('mask.exr', mask.astype(np.float32))
             img = img[...,:3]
             self.gt_image.append(img)
             self.gt_mask.append(mask)
