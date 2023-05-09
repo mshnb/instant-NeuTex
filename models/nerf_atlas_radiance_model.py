@@ -15,7 +15,8 @@ from .atlasnet.inverse import InverseAtlasnet
 from .texture.texture_mlp import TextureViewMlp
 from .embedding import LpEmbedding
 import numpy as np
-
+# import math
+# import torchvision.transforms as transform
 
 class NerfAtlasNetwork(nn.Module):
     def __init__(self, opt, device):
@@ -71,6 +72,7 @@ class NerfAtlasNetwork(nn.Module):
         self,
         camera_position=None,
         ray_direction=None,
+        gt_mask=None,
         background_color=None,
         compute_atlasnet=True,
         compute_inverse_mapping=False,
@@ -144,7 +146,8 @@ class NerfAtlasNetwork(nn.Module):
         output["color"] = ray_color
         output["transmittance"] = background_blend_weight
         
-        mask = 1 - background_blend_weight > 1e-2
+        # mask = 1 - background_blend_weight > 1e-2
+        mask = gt_mask.squeeze(dim=-1) > 0
         integrated_uv = (uv * blend_weight[..., None]).sum(dim=-2) * 0.5 + 0.5
         integrated_uv[~mask] = 0
         if self.opt.primitive_type == 'square':
@@ -167,6 +170,7 @@ class NerfAtlasNetwork(nn.Module):
             output["points_inverse"] = self.net_atlasnet.map(uv)
 
         output["weights"] = blend_weight
+        output["mask"] = mask
         return output
 
     def ngp_parameters(self):
@@ -275,9 +279,16 @@ class NerfAtlasRadianceModel(BaseModel):
 
         parser.add_argument(
             "--loss_normal",
-            required=True,
+            default=1,
             type=float,
             help="predict normal",
+        )
+
+        parser.add_argument(
+            "--loss_smooth",
+            default=0,
+            type=float,
+            help="use mean normal to regular predicted normal",
         )
 
         parser.add_argument(
@@ -369,6 +380,7 @@ class NerfAtlasRadianceModel(BaseModel):
         self.output = self.net_nerf_atlas(
             self.input["campos"],
             self.input["raydir"],
+            self.input["gt_mask"],
             self.input["background_color"],
             compute_atlasnet=use_atlasnet,
             compute_inverse_mapping=use_inverse_mapping,
@@ -502,6 +514,25 @@ class NerfAtlasRadianceModel(BaseModel):
             self.loss_normal = normal_loss.mean() + normal_reg_loss.mean()
             self.loss_total = self.loss_total + self.opt.loss_normal * self.loss_normal
             self.loss_names.append("normal")  
+        # if self.opt.loss_smooth > 0:
+        #     mask =  self.output['mask']
+        #     integrated_normal = self.output['integrated_normal'] * 2 - 1
+        #     pitch_size = int(math.sqrt(integrated_normal.shape[1]))
+        #     pitch_normal = integrated_normal.view(1, pitch_size, pitch_size, 3)
+        #     blurrer = transform.GaussianBlur(kernel_size=9, sigma=8)
+
+        #     # B, 3, H, W
+        #     pitch_normal = pitch_normal.permute(0, 3, 1, 2)
+        #     mean = blurrer(pitch_normal).permute(0, 2, 3, 1)
+        #     mean = F.normalize(mean, dim=-1, eps=1e-6).view(*integrated_normal.shape)
+        #     # self.loss_smooth = F.mse_loss(mean, integrated_normal)
+
+        #     loss_smooth = 1 - torch.sum(mean * integrated_normal, dim=-1).clamp(min=0, max=1)
+        #     loss_smooth[~mask] = 0
+        #     self.loss_smooth = loss_smooth.mean()
+
+        #     self.loss_total = self.loss_total + self.opt.loss_smooth * self.loss_smooth
+        #     self.loss_names.append("smooth")  
 
     def backward(self):
         self.optimizer.zero_grad()

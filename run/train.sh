@@ -12,6 +12,7 @@ dataset_name='custom'
 data_root=$dataset
 
 random_sample='balanced'
+# random_sample='patch'
 random_sample_size=64
 sample_num=128
 
@@ -52,14 +53,14 @@ print_freq=500
 test_freq=2500
 
 loss_normal=1
+loss_smooth=0
 bias=1
 scale_uv_weight=1
-
 seed=1337
-
 python3 train.py  \
         --name=$name  \
         --loss_normal=$loss_normal  \
+        --loss_smooth=$loss_smooth  \
         --bias=$bias  \
         --seed=$seed  \
         --scale_uv_weight=$scale_uv_weight  \
