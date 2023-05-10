@@ -288,9 +288,10 @@ class Neutex():
         dt = (t_max - t_min) / steps
 
         T = torch.ones(batch_size, device=self.device)
-        surface_w = torch.zeros(batch_size, device=self.device)
-        front_uv = torch.zeros([batch_size, self.uv_dim], device=self.device)
-        front_normal = torch.zeros([batch_size, 3], device=self.device)
+        # surface_w = torch.zeros(batch_size, device=self.device)
+        # front_uv = torch.zeros([batch_size, self.uv_dim], device=self.device)
+        # front_normal = torch.zeros([batch_size, 3], device=self.device)
+        integrated_front_uv = torch.zeros([batch_size, self.uv_dim], device=self.device)
         integrated_normal = torch.zeros([batch_size, 3], device=self.device)
         acc_density = torch.zeros(batch_size, device=self.device) 
 
@@ -301,28 +302,31 @@ class Neutex():
             outputs = self.nets['nerf'](pos)
             sigma = outputs['density'].squeeze()
             normal = outputs['normal']
+            uv = self.nets['inverse_atlas'](pos)
 
             acc_density += sigma
             alpha = 1.0 - torch.exp(-sigma * dt)
             weight = alpha * T
             T *= 1.0 - alpha
 
-            surface_i = weight > surface_w
-            surface_w[surface_i] = weight[surface_i]
-            front_uv[surface_i] = self.nets['inverse_atlas'](pos[surface_i])
-            front_normal[surface_i] = normal[surface_i]
+            # surface_i = weight > surface_w
+            # surface_w[surface_i] = weight[surface_i]
+            # front_uv[surface_i] = self.nets['inverse_atlas'](pos[surface_i])
+            # front_normal[surface_i] = normal[surface_i]
 
+            integrated_front_uv += weight[..., None] * uv
             integrated_normal += weight[..., None] * normal
 
         integrated_normal = F.normalize(integrated_normal, dim=-1, eps=1e-6)
         # ignore rays which do not hit object surface
         sample_valid = acc_density / steps > 1.0
-        return front_uv, front_normal, sample_valid, integrated_normal
+        return integrated_front_uv, integrated_normal, sample_valid
 
     def generate_normal_tex_by_sampling(self, tex_size, jitter=16):
         flat_size = tex_size * tex_size
         alpha = torch.zeros(flat_size, 1, device=self.device)
         normal_tex = torch.zeros(flat_size, 3, device=self.device)
+        position_tex = torch.zeros(flat_size, 3, device=self.device)
 
         scale = 1 / tex_size
         base = torch.arange(0, tex_size, device=self.device).float()
@@ -352,13 +356,17 @@ class Neutex():
 
             mask = sigma > 1e-4
             normal_tex[mask] += normal[mask]
+            position_tex[mask] += pos[mask]
             alpha[mask] += 1
         
         mask = alpha.squeeze() > 0
         alpha[mask] = 1.0 / alpha[mask]
         normal_tex *= alpha
+        position_tex *= alpha
         alpha[mask] = 1
 
         normal_tex[mask] = (F.normalize(normal_tex[mask], dim=-1, eps=1e-6) + 1) * 0.5
         normal_tex = torch.cat([normal_tex, alpha], dim=-1)
-        return normal_tex.view(tex_size, tex_size, 4).cpu()
+        position_tex = torch.cat([position_tex, alpha], dim=-1)
+        
+        return normal_tex.view(tex_size, tex_size, 4).cpu(), position_tex.view(tex_size, tex_size, 4).cpu()
