@@ -20,7 +20,7 @@ def perspective(fov, near, far):
     return np.asmatrix(trafo)
 
 def perspective_projection(film_size, fov_x, near_clip, far_clip):
-    aspect = film_size[0] / film_size[1]
+    aspect = film_size[1] / film_size[0]
 
     mat_scale = np.asmatrix(np.diag([-0.5, -0.5*aspect, 1, 1]))
 
@@ -83,7 +83,7 @@ class CustomDataset(BaseDataset):
         self.camat = np.load(self.data_dir + "/in_camAts.npy")
         self.extrinsics = np.load(self.data_dir + "/in_camExtrinsics.npy")
         if os.path.exists(self.data_dir + "/fov.npy"):
-            self.fov = np.load(self.data_dir + "/fov.npy")
+            self.fov = np.load(self.data_dir + "/fov.npy")[0]
         else:
             self.fov = 40
 

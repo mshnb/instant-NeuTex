@@ -56,7 +56,7 @@ def main():
     np.save('in_camOrgs.npy', np.stack(pos_list))
     np.save('in_camAts.npy', np.stack(tar_list))
     np.save('in_camExtrinsics.npy', np.stack(rotation_list))
-    np.save('fov.npy', fov_x)
+    np.save('fov.npy', [fov_x, fov_y])
 
 
 if __name__ == '__main__':
