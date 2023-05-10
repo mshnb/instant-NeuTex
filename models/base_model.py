@@ -52,6 +52,12 @@ class BaseModel:
             self.freeze_subnetworks(opt.freeze_subnetworks.split(","))
             print("freezing {}".format(nets))
 
+        if opt.freeze_all_except_normal > 0:
+            print(f'freeze_all_except_normal={opt.freeze_all_except_normal}')
+            nets = ['atlas', 'inverse_atlas', 'texture']
+            self.freeze_subnetworks(nets)
+            self.freeze_all_except_normal()
+
         self.print_networks(opt.verbose)
 
     def eval(self):
@@ -91,6 +97,9 @@ class BaseModel:
         return ret
 
     def get_subnetworks(self) -> dict:
+        raise NotImplementedError()
+
+    def freeze_all_except_normal(self):
         raise NotImplementedError()
 
     def freeze_subnetworks(self, network_names):

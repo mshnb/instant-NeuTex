@@ -11,8 +11,8 @@ model='nerf_atlas_radiance'
 dataset_name='custom'
 data_root=$dataset
 
-random_sample='balanced'
-# random_sample='patch'
+# random_sample='balanced'
+random_sample='patch'
 random_sample_size=64
 sample_num=128
 
@@ -40,8 +40,8 @@ lr=0.001
 checkpoints_dir='./checkpoints/'
 resume_checkpoints_dir=$checkpoints_dir
 
-save_iter_freq=50000
-niter=500000
+save_iter_freq=25000
+niter=1000000
 niter_decay=0
 
 n_threads=0
@@ -50,10 +50,11 @@ train_and_test=1
 test_num=1
 
 print_freq=500
-test_freq=500
+test_freq=2500
 
 loss_normal=1
-loss_smooth=0
+loss_smooth=1
+freeze_all_except_normal=1
 bias=1
 scale_uv_weight=1
 seed=1337
@@ -61,6 +62,7 @@ python3 train.py  \
         --name=$name  \
         --loss_normal=$loss_normal  \
         --loss_smooth=$loss_smooth  \
+        --freeze_all_except_normal=$freeze_all_except_normal  \
         --bias=$bias  \
         --seed=$seed  \
         --scale_uv_weight=$scale_uv_weight  \
@@ -97,5 +99,6 @@ python3 train.py  \
         --test_freq=$test_freq  \
         --verbose  \
         --texture_decoder_width=64  \
-        --texture_decoder_depth=2,2
+        --texture_decoder_depth=2,2  \
+        --resume_dir=$resume_checkpoints_dir/$name
 

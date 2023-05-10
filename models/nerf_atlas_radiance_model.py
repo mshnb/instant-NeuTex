@@ -15,8 +15,8 @@ from .atlasnet.inverse import InverseAtlasnet
 from .texture.texture_mlp import TextureViewMlp
 from .embedding import LpEmbedding
 import numpy as np
-# import math
-# import torchvision.transforms as transform
+import math
+import torchvision.transforms as transform
 
 class NerfAtlasNetwork(nn.Module):
     def __init__(self, opt, device):
@@ -514,25 +514,25 @@ class NerfAtlasRadianceModel(BaseModel):
             self.loss_normal = normal_loss.mean() + normal_reg_loss.mean()
             self.loss_total = self.loss_total + self.opt.loss_normal * self.loss_normal
             self.loss_names.append("normal")  
-        # if self.opt.loss_smooth > 0:
-        #     mask =  self.output['mask']
-        #     integrated_normal = self.output['integrated_normal'] * 2 - 1
-        #     pitch_size = int(math.sqrt(integrated_normal.shape[1]))
-        #     pitch_normal = integrated_normal.view(1, pitch_size, pitch_size, 3)
-        #     blurrer = transform.GaussianBlur(kernel_size=9, sigma=8)
+        if self.opt.loss_smooth > 0:
+            mask =  self.output['mask']
+            integrated_normal = self.output['integrated_normal'] * 2 - 1
+            pitch_size = int(math.sqrt(integrated_normal.shape[1]))
+            pitch_normal = integrated_normal.view(1, pitch_size, pitch_size, 3)
+            blurrer = transform.GaussianBlur(kernel_size=9, sigma=8)
 
-        #     # B, 3, H, W
-        #     pitch_normal = pitch_normal.permute(0, 3, 1, 2)
-        #     mean = blurrer(pitch_normal).permute(0, 2, 3, 1)
-        #     mean = F.normalize(mean, dim=-1, eps=1e-6).view(*integrated_normal.shape)
-        #     # self.loss_smooth = F.mse_loss(mean, integrated_normal)
+            # B, 3, H, W
+            pitch_normal = pitch_normal.permute(0, 3, 1, 2)
+            mean = blurrer(pitch_normal).permute(0, 2, 3, 1)
+            mean = F.normalize(mean, dim=-1, eps=1e-6).view(*integrated_normal.shape)
+            
+            # self.loss_smooth = F.mse_loss(mean, integrated_normal)
+            loss_smooth = 1 - torch.sum(mean * integrated_normal, dim=-1).clamp(min=0, max=1)
+            loss_smooth[~mask] = 0
+            self.loss_smooth = loss_smooth.mean()
 
-        #     loss_smooth = 1 - torch.sum(mean * integrated_normal, dim=-1).clamp(min=0, max=1)
-        #     loss_smooth[~mask] = 0
-        #     self.loss_smooth = loss_smooth.mean()
-
-        #     self.loss_total = self.loss_total + self.opt.loss_smooth * self.loss_smooth
-        #     self.loss_names.append("smooth")  
+            self.loss_total = self.loss_total + self.opt.loss_smooth * self.loss_smooth
+            self.loss_names.append("smooth")  
 
     def backward(self):
         self.optimizer.zero_grad()
@@ -555,6 +555,11 @@ class NerfAtlasRadianceModel(BaseModel):
             "inverse_atlas": self.net_nerf_atlas.module.net_inverse_atlasnet,
             "texture": self.net_nerf_atlas.module.net_texture,
         }
+
+    def freeze_all_except_normal(self):
+        nerf = self.net_nerf_atlas.module.net_geometry_decoder
+        nerf.pos_encoder.requires_grad_(False)
+        nerf.sigma_block.requires_grad_(False)
 
     def visualize_volume(self, res, block_size=64):
         with torch.no_grad():

@@ -76,5 +76,12 @@ class TrainOptions(BaseOptions):
             default=None,
             help="subnetworks to freeze before training",
         )
+        
+        parser.add_argument(
+            "--freeze_all_except_normal",
+            type=int,
+            default=0,
+            help="freeze all other nets before training",
+        )
 
         return parser
