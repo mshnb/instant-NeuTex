@@ -118,7 +118,8 @@ def main():
         if need_handle_mask:
             img = cv2.imread(os.path.join('image', '{:03d}.png'.format(i)), -1)
             mask = cv2.imread(os.path.join('mask', '{:03d}.png'.format(i)), -1)
-            cv2.imwrite(os.path.join('data', '{:04d}.png'.format(i)), np.concatenate([img, mask[..., 0:1]], axis=-1))
+            img_ = np.concatenate([img * (mask // 128), mask[..., 0:1].clip(min=0)], axis=-1)
+            cv2.imwrite(os.path.join('data', '{:04d}.png'.format(i)), img_)
 
         frame = {
             'file_path': f'./data/{i:04d}',
