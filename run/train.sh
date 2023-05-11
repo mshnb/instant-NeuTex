@@ -41,7 +41,7 @@ checkpoints_dir='./checkpoints/'
 resume_checkpoints_dir=$checkpoints_dir
 
 save_iter_freq=50000
-niter=500000
+niter=250000
 niter_decay=0
 
 n_threads=0
@@ -50,7 +50,7 @@ train_and_test=1
 test_num=1
 
 print_freq=500
-test_freq=500
+test_freq=2500
 
 loss_normal=1
 loss_smooth=0

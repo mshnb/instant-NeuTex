@@ -96,8 +96,9 @@ class CustomDataset(BaseDataset):
             test_views = [int(x) for x in test_idx]
 
         if self.opt.is_train:
-            self.indexes = [i for i in range(self.total) if i not in test_views]
-            assert len(self.indexes) == self.campos.shape[0] - len(test_views)
+            self.indexes = [i for i in range(self.total)]
+            # self.indexes = [i for i in range(self.total) if i not in test_views]
+            # assert len(self.indexes) == self.campos.shape[0] - len(test_views)
         else:
             self.indexes = test_views
             assert len(self.indexes) > 0

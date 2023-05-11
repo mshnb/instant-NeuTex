@@ -519,7 +519,7 @@ class NerfAtlasRadianceModel(BaseModel):
             integrated_normal = self.output['integrated_normal'] * 2 - 1
             pitch_size = int(math.sqrt(integrated_normal.shape[1]))
             pitch_normal = integrated_normal.view(1, pitch_size, pitch_size, 3)
-            blurrer = transform.GaussianBlur(kernel_size=9, sigma=8)
+            blurrer = transform.GaussianBlur(kernel_size=5, sigma=2)
 
             # B, 3, H, W
             pitch_normal = pitch_normal.permute(0, 3, 1, 2)

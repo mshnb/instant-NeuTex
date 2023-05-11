@@ -3,6 +3,8 @@ checkpoints
 *.so
 *.o
 *.pyc
+*.png
+*.npy
 
 build/
 *.egg-info/

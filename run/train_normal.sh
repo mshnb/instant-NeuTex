@@ -13,8 +13,8 @@ data_root=$dataset
 
 # random_sample='balanced'
 random_sample='patch'
-random_sample_size=64
-sample_num=128
+random_sample_size=32
+sample_num=256
 
 geometry_embedding_dim=64
 primitive_type='sphere'
@@ -35,13 +35,13 @@ loss_density_weight=-1
 # training
 batch_size=1
 
-lr=0.001
+lr=0.0001
 
 checkpoints_dir='./checkpoints/'
 resume_checkpoints_dir=$checkpoints_dir
 
 save_iter_freq=25000
-niter=1000000
+niter=500000
 niter_decay=0
 
 n_threads=0
@@ -53,7 +53,7 @@ print_freq=500
 test_freq=2500
 
 loss_normal=1
-loss_smooth=1
+loss_smooth=0.1
 freeze_all_except_normal=1
 bias=1
 scale_uv_weight=1
