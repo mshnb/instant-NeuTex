@@ -60,21 +60,17 @@ def load_K_Rt_from_P(filename, P=None):
 def main():
     os.chdir(os.path.join(root, instance_dir))
 
-    image_dir = 'frames'
-    n_images = len(os.listdir(image_dir))
-
     cam_file = 'cameras.npz'
     camera_dict = np.load(cam_file)
-    world_mats = [camera_dict['world_mat_%d' % idx].astype(np.float32) for idx in range(n_images)]
 
-    intrinsics_all = []
-    pose_all = []
-    for mat in world_mats:
-        P = mat
+    intrinsics_all = {}
+    pose_all = {}
+    for id, mat in camera_dict.items():
+        P = mat.astype(np.float32)
         P = P[:3, :4]
         intrinsics, pose = load_K_Rt_from_P(None, P)
-        intrinsics_all.append(intrinsics)
-        pose_all.append(opencv_to_gl(pose))
+        intrinsics_all[id] = intrinsics
+        pose_all[id] = opencv_to_gl(pose)
 
     train_json = dict()
 
@@ -83,20 +79,18 @@ def main():
     train_json['fl_x'] = intrinsics[0][0]
     train_json['w'] = int(intrinsics[0, 2] * 2)
 
-    scale, offset = get_offset(pose_all)
-
-    train_json['enable_depth_loading'] = True
-    train_json['integer_depth_scale'] = 1 / 65535
+    scale, offset = get_offset(pose_all.values())
 
     train_json['frames'] = []
 
     test_json = copy.deepcopy(train_json)
 
-    for i in tqdm(range(n_images)):
+    for pose_id in tqdm(pose_all):
+        id = int(pose_id.split('_')[-1])
         frames = train_json['frames']
         frame = {
-            'file_path': f'./frames/{i:06d}',
-            'transform_matrix': s(pose_all[i], scale.max(), offset)
+            'file_path': f'./frames/{id:06d}',
+            'transform_matrix': s(pose_all[pose_id], scale.max(), offset)
         }
         frames.append(frame)
 

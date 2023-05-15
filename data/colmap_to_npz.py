@@ -1,7 +1,7 @@
-import os
-import cv2
-import numpy as np
 import collections
+import os
+
+import numpy as np
 from tqdm.contrib import tenumerate
 
 CameraModel = collections.namedtuple(
@@ -124,29 +124,12 @@ def main():
     cameras = read_cameras_text(cameras_file)
     image_infos = read_images_text(images_file)
 
-    camera_only = True
-    use_depth = False
     camera_dict = {}
     for i, imId in tenumerate(image_infos):
         imInfo = image_infos[imId]
         camInfo = cameras[imInfo.camera_id]
-        h = camInfo.height
-        w = camInfo.width
-        if not camera_only:
-            os.makedirs(f"image", exist_ok=True)
-            imName = "images/{}".format(imInfo.name)
-            im = cv2.imread(imName)
-            if scale > 1:
-                im = cv2.resize(im, (w // scale, h // scale), interpolation=cv2.INTER_AREA)
-            cv2.imwrite("scan{}/image/{:04d}.png".format(scan_id, i), im)
-        if use_depth:
-            os.makedirs(f"depth", exist_ok=True)
-            depth = "dense/stereo/depth_maps/{}.geometric.bin".format(imInfo.name)
-            depth = read_array(depth)
-            if scale > 1:
-                depth = cv2.resize(depth, (w // scale, h // scale), interpolation=cv2.INTER_AREA)
-            cv2.imwrite("scan{}/depth/{:04d}.exr".format(scan_id, i), depth)
         assert camInfo.model == "SIMPLE_PINHOLE"
+
         f, cx, cy = camInfo.params
         K = np.eye(4, dtype=np.float32)
         K[0, 0] = f / scale
@@ -158,9 +141,7 @@ def main():
         w2c[:3, :3] = R
         w2c[:3, 3] = imInfo.tvec
         P = K @ w2c
-        camera_dict[f"world_mat_{i}"] = P
-        # camera_dict[f"intrinsics_{i}"] = K
-        # camera_dict[f"extrinsics_{i}"] = w2c
+        camera_dict[f"world_mat_{imId - 1}"] = P
 
     np.savez_compressed("cameras.npz", **camera_dict)
 
