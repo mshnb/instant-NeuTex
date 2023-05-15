@@ -29,6 +29,7 @@ CAMERA_MODEL_IDS = dict([(camera_model.model_id, camera_model)
 CAMERA_MODEL_NAMES = dict([(camera_model.model_name, camera_model)
                            for camera_model in CAMERA_MODELS])
 
+
 def read_cameras_text(path) -> "dict[int, Camera]":
     """
     see: src/base/reconstruction.cc
@@ -44,7 +45,7 @@ def read_cameras_text(path) -> "dict[int, Camera]":
             line = line.strip()
             if len(line) > 0 and line[0] != "#":
                 elems = line.split()
-                camera_id = int(elems[0])
+                camera_id = int(elems[0].replace(',', ''))
                 model = elems[1]
                 width = int(elems[2])
                 height = int(elems[3])
@@ -53,6 +54,7 @@ def read_cameras_text(path) -> "dict[int, Camera]":
                                             width=width, height=height,
                                             params=params)
     return cameras
+
 
 def read_images_text(path) -> "dict[int, Image]":
     """
@@ -69,10 +71,10 @@ def read_images_text(path) -> "dict[int, Image]":
             line = line.strip()
             if len(line) > 0 and line[0] != "#":
                 elems = line.split()
-                image_id = int(elems[0])
+                image_id = int(elems[0].replace(',', ''))
                 qvec = np.array(tuple(map(float, elems[1:5])))
                 tvec = np.array(tuple(map(float, elems[5:8])))
-                camera_id = int(elems[8])
+                camera_id = int(elems[8].replace(',', ''))
                 image_name = elems[9]
                 _ = fid.readline()
                 images[image_id] = Image(
@@ -80,17 +82,19 @@ def read_images_text(path) -> "dict[int, Image]":
                     camera_id=camera_id, name=image_name)
     return images
 
+
 def qvec2rotmat(qvec):
     return np.array([
-        [1 - 2 * qvec[2]**2 - 2 * qvec[3]**2,
+        [1 - 2 * qvec[2] ** 2 - 2 * qvec[3] ** 2,
          2 * qvec[1] * qvec[2] - 2 * qvec[0] * qvec[3],
          2 * qvec[3] * qvec[1] + 2 * qvec[0] * qvec[2]],
         [2 * qvec[1] * qvec[2] + 2 * qvec[0] * qvec[3],
-         1 - 2 * qvec[1]**2 - 2 * qvec[3]**2,
+         1 - 2 * qvec[1] ** 2 - 2 * qvec[3] ** 2,
          2 * qvec[2] * qvec[3] - 2 * qvec[0] * qvec[1]],
         [2 * qvec[3] * qvec[1] - 2 * qvec[0] * qvec[2],
          2 * qvec[2] * qvec[3] + 2 * qvec[0] * qvec[1],
-         1 - 2 * qvec[1]**2 - 2 * qvec[2]**2]])
+         1 - 2 * qvec[1] ** 2 - 2 * qvec[2] ** 2]])
+
 
 def read_array(path):
     with open(path, "rb") as fid:
@@ -109,52 +113,57 @@ def read_array(path):
     array = array.reshape((width, height, channels), order="F")
     return np.transpose(array, (1, 0, 2)).squeeze()
 
-cameras_file = "sparse/cameras.txt"
-images_file = "sparse/images.txt"
-scan_id = 50
-scale = 1
 
-os.makedirs(f"scan{scan_id}/image", exist_ok=True)
+def main():
+    scene = r'D:\shares\buddha'
+    os.chdir(scene)
+    cameras_file = "sparse/cameras.txt"
+    images_file = "sparse/images.txt"
+    scale = 1
 
-cameras = read_cameras_text(cameras_file)
-image_infos = read_images_text(images_file)
+    cameras = read_cameras_text(cameras_file)
+    image_infos = read_images_text(images_file)
 
-camera_only = False
-use_depth = False
-if use_depth:
-    os.makedirs(f"scan{scan_id}/depth", exist_ok=True)
-camera_dict = {}
-for i, imId in tenumerate(image_infos):
-    imInfo = image_infos[imId]
-    camInfo = cameras[imInfo.camera_id]
-    h = camInfo.height
-    w = camInfo.width
-    if not camera_only:
-        imName = "images/{}".format(imInfo.name)
-        im = cv2.imread(imName)
-        if scale > 1:
-            im = cv2.resize(im, (w // scale, h // scale), interpolation=cv2.INTER_AREA)
-        cv2.imwrite("scan{}/image/{:04d}.png".format(scan_id, i), im)
-    if use_depth:
-        depth = "dense/stereo/depth_maps/{}.geometric.bin".format(imInfo.name)
-        depth = read_array(depth)
-        if scale > 1:
-            depth = cv2.resize(depth, (w // scale, h // scale), interpolation=cv2.INTER_AREA)
-        cv2.imwrite("scan{}/depth/{:04d}.exr".format(scan_id, i), depth)
-    assert camInfo.model == "SIMPLE_PINHOLE"
-    f, cx, cy = camInfo.params
-    K = np.eye(4, dtype=np.float32)
-    K[0,0] = f / scale
-    K[1,1] = f / scale
-    K[0,2] = cx / scale
-    K[1,2] = cy / scale
-    R = qvec2rotmat(imInfo.qvec)
-    w2c = np.eye(4, dtype=np.float32)
-    w2c[:3,:3] = R
-    w2c[:3,3] = imInfo.tvec
-    P = K @ w2c
-    camera_dict[f"world_mat_{i}"] = P
-    # camera_dict[f"intrinsics_{i}"] = K
-    # camera_dict[f"extrinsics_{i}"] = w2c
+    camera_only = True
+    use_depth = False
+    camera_dict = {}
+    for i, imId in tenumerate(image_infos):
+        imInfo = image_infos[imId]
+        camInfo = cameras[imInfo.camera_id]
+        h = camInfo.height
+        w = camInfo.width
+        if not camera_only:
+            os.makedirs(f"image", exist_ok=True)
+            imName = "images/{}".format(imInfo.name)
+            im = cv2.imread(imName)
+            if scale > 1:
+                im = cv2.resize(im, (w // scale, h // scale), interpolation=cv2.INTER_AREA)
+            cv2.imwrite("scan{}/image/{:04d}.png".format(scan_id, i), im)
+        if use_depth:
+            os.makedirs(f"depth", exist_ok=True)
+            depth = "dense/stereo/depth_maps/{}.geometric.bin".format(imInfo.name)
+            depth = read_array(depth)
+            if scale > 1:
+                depth = cv2.resize(depth, (w // scale, h // scale), interpolation=cv2.INTER_AREA)
+            cv2.imwrite("scan{}/depth/{:04d}.exr".format(scan_id, i), depth)
+        assert camInfo.model == "SIMPLE_PINHOLE"
+        f, cx, cy = camInfo.params
+        K = np.eye(4, dtype=np.float32)
+        K[0, 0] = f / scale
+        K[1, 1] = f / scale
+        K[0, 2] = cx / scale
+        K[1, 2] = cy / scale
+        R = qvec2rotmat(imInfo.qvec)
+        w2c = np.eye(4, dtype=np.float32)
+        w2c[:3, :3] = R
+        w2c[:3, 3] = imInfo.tvec
+        P = K @ w2c
+        camera_dict[f"world_mat_{i}"] = P
+        # camera_dict[f"intrinsics_{i}"] = K
+        # camera_dict[f"extrinsics_{i}"] = w2c
 
-np.savez_compressed(f"scan{scan_id}/cameras.npz", **camera_dict)
+    np.savez_compressed("cameras.npz", **camera_dict)
+
+
+if __name__ == '__main__':
+    main()
