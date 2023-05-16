@@ -181,24 +181,34 @@ def main():
 
     pixels = torch.zeros(flat_size, 3, device=device)
     for s in range(args.spp):
+        def get_normal(ray_o, ray_d):
+            uv, normal, valid, pos = neutex.trace_surface(
+                ray_o,
+                ray_d,
+                camera.near,
+                camera.far,
+                steps=256
+            )
+            return valid, normal, pos, uv
+
         ray_o, ray_d = generate_ray(camera, samples, device)
-        uv, normal, valid = neutex.trace_surface(
-            ray_o,
-            ray_d,
-            camera.near,
-            camera.far,
-            steps=256
-        )
+        # surface 0
+        valid_0, normal_0, pos, _ = get_normal(ray_o, ray_d)
+        ray_out_0 = refract(ray_d[valid_0], normal_0[valid_0], 1 / ior)
 
-        uv = uv[valid]
-        normal = normal[valid]
-        ray_hitted = ray_d[valid]
-        r = refract(ray_hitted, normal, 1 / ior)
+        # surface 1
+        ray_oo = pos[valid_0] + ray_out_0 * camera.far * 0.75
+        valid_1, normal_1, _, uv = get_normal(ray_oo, -ray_out_0)
+        ray_out_1 = refract(ray_out_0[valid_1], -normal_1[valid_1], ior)
 
-        ray_d[valid] = refract(r, -normal, ior)
+        ray_out_0[valid_1] = ray_out_1
+        ray_d[valid_0] = ray_out_0
 
         ray_d = F.normalize(ray_d, dim=-1, eps=1e-6)
         pixels += skybox(ray_d)
+
+        # pixels[valid_0] += uv
+        # pixels[valid_0] += torch.cat([neutex.normalize_normal(uv), torch.zeros_like(uv[..., 0:1])], dim=-1)
 
     pixels = torch.cat([pixels * (1.0 / args.spp), torch.ones(flat_size, 1, device=device)], dim=-1)
     imageio.imwrite('output.exr', pixels.reshape(resolution, resolution, -1).cpu())
