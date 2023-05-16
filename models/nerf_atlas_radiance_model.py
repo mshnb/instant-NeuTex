@@ -32,7 +32,7 @@ class NerfAtlasNetwork(nn.Module):
             uv_count=0,
             brdf_dim=3,
             hidden_size=64,
-            normal_hidden_size=64,
+            normal_hidden_size=128,
             num_layers=1,
             pred_normal=self.pred_normal,
             use_bias=self.use_bias
@@ -519,7 +519,7 @@ class NerfAtlasRadianceModel(BaseModel):
             integrated_normal = self.output['integrated_normal'] * 2 - 1
             pitch_size = int(math.sqrt(integrated_normal.shape[1]))
             pitch_normal = integrated_normal.view(1, pitch_size, pitch_size, 3)
-            blurrer = transform.GaussianBlur(kernel_size=9, sigma=8)
+            blurrer = transform.GaussianBlur(kernel_size=5, sigma=2)
 
             # B, 3, H, W
             pitch_normal = pitch_normal.permute(0, 3, 1, 2)
