@@ -145,7 +145,7 @@ def generate_ray(camera, samples, device):
     return ray_o, ray_d
 
 
-def main():
+def draw_gt():
     envmap_path = osp.join('../scenes/envmap', args.envmap)
     if osp.exists(envmap_path + '.hdr'):
         envmap_path += '.hdr'
@@ -156,7 +156,6 @@ def main():
         exit()
 
     neutex = Neutex(args.dataset, args.neutex, device)
-    uv_dim = neutex.uv_dim
 
     cam_origin = [0, 0.25, 2.75]
     cam_target = [0, 0, 0]
@@ -214,6 +213,22 @@ def main():
     imageio.imwrite('output.exr', pixels.reshape(resolution, resolution, -1).cpu())
 
 
+def show():
+    neutex = Neutex(args.dataset, args.neutex, device)
+
+    # neutex.get_pcd()
+    # neutex.visualization_pcd()
+
+    neutex.get_mesh()
+    neutex.visualization_mesh()
+    neutex.dump_mesh('uv.ply')
+
+    neutex.get_nerf_mesh()
+    neutex.visualization_mesh()
+    neutex.dump_mesh('nerf.ply')
+
+
 if __name__ == "__main__":
     with torch.no_grad():
-        main()
+        draw_gt()
+        show()
